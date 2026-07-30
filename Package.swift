@@ -12,6 +12,8 @@ let package = Package(
         .library(name: "AGUICore", targets: ["AGUICore"]),
         .library(name: "AGUIEncoder", targets: ["AGUIEncoder"]),
         .library(name: "AGUIClient", targets: ["AGUIClient"]),
+        .library(name: "AGUIJSONPatch", targets: ["AGUIJSONPatch"]),
+        .library(name: "AGUIState", targets: ["AGUIState"]),
     ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.4.0"),
@@ -36,5 +38,19 @@ let package = Package(
         // apply 層(messages/state リデューサ)は将来の AGUIState に分離する。
         .target(name: "AGUIClient", dependencies: ["AGUICore"]),
         .testTarget(name: "AGUIClientTests", dependencies: ["AGUIClient", "AGUIEncoder"]),
+
+        // 仕様外・独自: RFC 6902 (JSON Patch) / RFC 6901 (JSON Pointer) の
+        // StructuredValue 実装。AG-UI 固有ではない IETF 仕様なので別ターゲットに分離。
+        // STATE_DELTA / ACTIVITY_DELTA の適用に AGUIState が使う。
+        .target(name: "AGUIJSONPatch", dependencies: [
+            .product(name: "StructuredDataCore", package: "swift-structured-data"),
+        ]),
+        .testTarget(name: "AGUIJSONPatchTests", dependencies: ["AGUIJSONPatch"]),
+
+        // @ag-ui/client の apply 層のミラー: イベントを messages / state へ
+        // 還元するデフォルトリデューサ(任意採用 — 独自リデューサを持つ
+        // クライアントは AGUIClient だけで完結する)。
+        .target(name: "AGUIState", dependencies: ["AGUICore", "AGUIJSONPatch"]),
+        .testTarget(name: "AGUIStateTests", dependencies: ["AGUIState"]),
     ]
 )
