@@ -10,6 +10,8 @@ let package = Package(
     platforms: [.macOS(.v14), .iOS(.v17)],
     products: [
         .library(name: "AGUICore", targets: ["AGUICore"]),
+        .library(name: "AGUIEncoder", targets: ["AGUIEncoder"]),
+        .library(name: "AGUIClient", targets: ["AGUIClient"]),
     ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.4.0"),
@@ -23,5 +25,16 @@ let package = Package(
             .product(name: "StructuredDataCore", package: "swift-structured-data"),
         ]),
         .testTarget(name: "AGUICoreTests", dependencies: ["AGUICore"]),
+
+        // @ag-ui/encoder のミラー: サーバー側の SSE イベントフレーミング
+        // (`data: {json}\n\n`)。protobuf トランスポートは非実装(SSE のみで完全準拠)。
+        .target(name: "AGUIEncoder", dependencies: ["AGUICore"]),
+        .testTarget(name: "AGUIEncoderTests", dependencies: ["AGUIEncoder"]),
+
+        // @ag-ui/client のトランスポート+検証部のミラー: SSE パーサ / chunk 展開 /
+        // プロトコル順序検証 / interrupt バリデータ / URLSession ベースの HTTP エージェント。
+        // apply 層(messages/state リデューサ)は将来の AGUIState に分離する。
+        .target(name: "AGUIClient", dependencies: ["AGUICore"]),
+        .testTarget(name: "AGUIClientTests", dependencies: ["AGUIClient", "AGUIEncoder"]),
     ]
 )
