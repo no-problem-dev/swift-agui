@@ -83,6 +83,45 @@ struct AGUIHTTPAgentTests {
         _ = try await collect(makeAgent(), input: input)
     }
 
+    /// 既定では何も落とさない(仕様どおり全部送る)。
+    @Test func requestBodyKeepsEveryKeyByDefault() async throws {
+        StubURLProtocol.handler = { request in
+            let body = request.httpBodyData ?? Data()
+            let object = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+            #expect(object?["state"] != nil)
+            #expect(object?["tools"] != nil)
+            return (200, ["Content-Type": "text/event-stream"], [])
+        }
+        defer { StubURLProtocol.handler = nil }
+
+        _ = try await collect(makeAgent(), input: RunAgentInput(threadId: "t1", runId: "r1"))
+    }
+
+    /// 繋ぎ先が読まない項目は落として送れる。型(`RunAgentInput`)は
+    /// 上流の写しのまま — 変えるのは送り方だけ。
+    @Test func omittedInputKeysAreStrippedFromTheBody() async throws {
+        StubURLProtocol.handler = { request in
+            let body = request.httpBodyData ?? Data()
+            let object = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+            #expect(object?["state"] == nil)
+            #expect(object?["tools"] == nil)
+            // 落としていないものは残る
+            #expect(object?["threadId"] as? String == "t1")
+            #expect(object?["messages"] != nil)
+            return (200, ["Content-Type": "text/event-stream"], [])
+        }
+        defer { StubURLProtocol.handler = nil }
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubURLProtocol.self]
+        let agent = AGUIHTTPAgent(
+            url: URL(string: "https://agent.test/run")!,
+            session: URLSession(configuration: configuration),
+            omittedInputKeys: ["state", "tools"]
+        )
+        _ = try await collect(agent, input: RunAgentInput(threadId: "t1", runId: "r1"))
+    }
+
     @Test func non2xxThrowsHTTPErrorWithBody() async {
         StubURLProtocol.handler = { _ in
             (401, ["Content-Type": "application/json"], [Data(#"{"error":"unauthorized"}"#.utf8)])
