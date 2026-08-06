@@ -30,15 +30,33 @@ public final class AGUIHTTPAgent: AGUIAgent {
     private let url: URL
     private let headers: [String: String]
     private let session: URLSession
+    private let omittedInputKeys: Set<String>
 
     /// - Parameters:
     ///   - url: エージェントのエンドポイント(パス形状の規定は仕様にない)。
     ///   - headers: 追加ヘッダ(認証トークン等の注入ポイント)。
     ///   - session: 差し替え可能な URLSession(テスト・カスタム構成用)。
-    public init(url: URL, headers: [String: String] = [:], session: URLSession = .shared) {
+    ///   - omittedInputKeys: **ボディから落とすトップレベルのキー。**
+    ///     既定は空 = 仕様どおり全部送る。
+    ///
+    ///     `RunAgentInput`(`AGUICore`)は上流の写しなので、使わない項目も
+    ///     型としては必須のまま持つ。一方で**実際に何を送るかはクライアントの
+    ///     裁量**で、繋ぎ先が読まない項目(`state` / `tools` など)を毎リクエスト
+    ///     送る値打ちは無い。その線引きをここで表す。
+    ///
+    ///     落とせるのはトップレベルのキーだけ。識別子(`threadId` / `runId`)まで
+    ///     落とすと成立しないが、何が要るかは繋ぎ先が決めることなので
+    ///     ここでは判定しない — 呼ぶ側の責任。
+    public init(
+        url: URL,
+        headers: [String: String] = [:],
+        session: URLSession = .shared,
+        omittedInputKeys: Set<String> = []
+    ) {
         self.url = url
         self.headers = headers
         self.session = session
+        self.omittedInputKeys = omittedInputKeys
     }
 
     public func run(_ input: RunAgentInput) -> AsyncThrowingStream<AGUIEvent, Error> {
@@ -59,6 +77,28 @@ public final class AGUIHTTPAgent: AGUIAgent {
         }
     }
 
+    /// リクエストボディを作る。
+    ///
+    /// `omittedInputKeys` が空なら**素直にエンコードするだけ**(既定の経路は
+    /// 今までと 1 バイトも変わらない)。指定があるときだけ、エンコード後の
+    /// トップレベルからそのキーを落とす。
+    ///
+    /// 型を書き換えるのではなく出力から落とすのは、`RunAgentInput` が上流の
+    /// 写しだから — 型は仕様どおりのまま、送り方だけをここで変える。
+    private func encodeBody(_ input: RunAgentInput) throws -> Data {
+        let data = try JSONEncoder().encode(input)
+        guard !omittedInputKeys.isEmpty else {
+            return data
+        }
+        guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return data
+        }
+        for key in omittedInputKeys {
+            object.removeValue(forKey: key)
+        }
+        return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    }
+
     private static func finishAborted(_ continuation: AsyncThrowingStream<AGUIEvent, Error>.Continuation) {
         continuation.yield(.runError(RunErrorEvent(message: "Run was aborted", code: "abort")))
         continuation.finish()
@@ -75,7 +115,7 @@ public final class AGUIHTTPAgent: AGUIAgent {
         for (field, value) in headers {
             request.setValue(value, forHTTPHeaderField: field)
         }
-        request.httpBody = try JSONEncoder().encode(input)
+        request.httpBody = try encodeBody(input)
 
         let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse else {
