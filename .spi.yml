@@ -1,0 +1,9 @@
+version: 1
+builder:
+  configs:
+    - documentation_targets:
+        - AGUIClient
+        - AGUICore
+        - AGUIEncoder
+        - AGUIJSONPatch
+        - AGUIState
