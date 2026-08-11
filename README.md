@@ -2,6 +2,8 @@
 
 Swift implementation of the [AG-UI (Agent-User Interaction) Protocol](https://github.com/ag-ui-protocol/ag-ui).
 
+> **Unofficial.** Not affiliated with or endorsed by the authors of the AG-UI Protocol. Conforming to the specification is not a goal of this project.
+
 AG-UI is an open, event-based protocol that standardizes how AI agents connect to
 user-facing applications: streaming text, tool calls, shared state, generative UI
 (e.g. [A2UI](https://github.com/google/A2UI) carried over `ACTIVITY_SNAPSHOT`),
