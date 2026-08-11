@@ -17,7 +17,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.4.0"),
-        .package(url: "https://github.com/no-problem-dev/swift-structured-data.git", from: "2.0.0"),
+        .package(url: "https://github.com/no-problem-dev/swift-structured-data.git", from: "3.0.0"),
     ],
     targets: [
         // @ag-ui/core 0.0.57 のミラー: イベント語彙(28種 + unknown)・Message union・
