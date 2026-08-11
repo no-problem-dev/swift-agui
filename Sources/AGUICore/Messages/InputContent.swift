@@ -1,10 +1,12 @@
 import StructuredDataCore
 
-/// マルチモーダル入力の実体の所在。
+/// Where the bytes of a multimodal input actually live, discriminated on the wire by
+/// `type` being `"data"` or `"url"`; anything else fails to decode.
 public enum InputContentSource: Sendable, Equatable {
-    /// インラインデータ(base64 等)。
+    /// Bytes inline, typically base64. `mimeType` is required in this form.
     case data(value: String, mimeType: String)
-    /// 参照 URL。
+    /// A URL the agent has to fetch itself, with `mimeType` optional because the
+    /// response may declare it.
     case url(value: String, mimeType: String?)
 }
 
@@ -53,7 +55,8 @@ extension InputContentSource: Codable {
     }
 }
 
-/// メディア入力(image / audio / video / document 共通のペイロード)。
+/// The payload shared by the image, audio, video, and document parts — they differ only
+/// in the `type` discriminator that sits alongside it, not in shape.
 public struct MediaInputContent: Codable, Sendable, Equatable {
     public var source: InputContentSource
     public var metadata: StructuredValue?
@@ -64,10 +67,11 @@ public struct MediaInputContent: Codable, Sendable, Equatable {
     }
 }
 
-/// user メッセージのマルチモーダルコンテンツパート。
+/// One part of a user message's multimodal content, discriminated by `type`.
 ///
-/// ミラー元: `@ag-ui/core` `types.ts` の `InputContentSchema`。
-/// 上流のレガシー `binary` 形(typed 形へ移行済み)は実装しない。
+/// Mirrors `InputContentSchema` in `@ag-ui/core` `types.ts`. The upstream legacy
+/// `binary` form, superseded by these typed parts, is not implemented: a message
+/// still carrying one fails to decode rather than losing the part silently.
 public enum InputContent: Sendable, Equatable {
     case text(String)
     case image(MediaInputContent)

@@ -18,7 +18,7 @@ struct InterruptResumeTests {
         ])
     }
 
-    /// 部分 resume は不可 — 全 interrupt を網羅すること。
+    /// Partial resume is rejected: every open interrupt has to be answered.
     @Test func partialResumeRejected() {
         #expect(throws: AGUIError.self) {
             try InterruptResume.validate(pending: pending, resume: [

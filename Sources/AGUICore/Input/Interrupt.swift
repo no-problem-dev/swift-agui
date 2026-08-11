@@ -1,20 +1,23 @@
 import StructuredDataCore
 
-/// run を中断して人間の入力を待つ割り込み。
-/// `RUN_FINISHED { outcome: interrupt }` で届き、次の run の
-/// `RunAgentInput.resume` で応答する(ターミナルモデル — ストリームは保持しない)。
+/// A stop point where the agent needs a human before it can go on.
+///
+/// It arrives inside `RUN_FINISHED { outcome: interrupt }` and is answered through the
+/// next run's `RunAgentInput.resume`. The model is terminal, not suspended: the stream is
+/// already closed, so there is nothing to keep open while the person decides.
 public struct Interrupt: Codable, Sendable, Equatable {
-    /// 相関キー。resume はこの id を参照する。
+    /// Correlation key that the matching resume entry points back at.
     public var id: String
-    /// コア分類は "tool_call" / "input_required" / "confirmation"。
-    /// それ以外の文字列も有効(`<framework>:<name>` で名前空間化推奨)。
-    /// 未知の reason でエラーにせず、message / responseSchema からフォールバック描画する。
+    /// Why the agent stopped. The core values are `"tool_call"`, `"input_required"`, and
+    /// `"confirmation"`, but any string is legal, so namespace custom ones as
+    /// `<framework>:<name>`. Treat an unrecognised reason as renderable rather than fatal:
+    /// fall back to `message` and `responseSchema`.
     public var reason: String
     public var message: String?
     public var toolCallId: String?
-    /// 応答 payload の JSON Schema。
+    /// JSON Schema the resume payload should satisfy, for building a form to answer with.
     public var responseSchema: StructuredValue?
-    /// ISO-8601。期限切れの interrupt へ resume を送ってはならない。
+    /// ISO-8601 deadline. Nothing here enforces it — do not resume an interrupt past it.
     public var expiresAt: String?
     public var metadata: StructuredValue?
 
@@ -38,7 +41,7 @@ public struct Interrupt: Codable, Sendable, Equatable {
 }
 
 extension Interrupt {
-    /// コア reason 分類。
+    /// The reason strings the protocol defines, spelled exactly as they go on the wire.
     public enum Reason {
         public static let toolCall = "tool_call"
         public static let inputRequired = "input_required"
@@ -46,15 +49,18 @@ extension Interrupt {
     }
 }
 
-/// resume エントリの状態。拒否は別ステータスではなく
-/// `.resolved` の payload 内で表現する(例: `{"approved": false}`)。
+/// How an interrupt was settled. There is no "rejected" status: a refusal is still
+/// `.resolved`, expressed inside the payload as something like `{"approved": false}`,
+/// while `.cancelled` is for an interrupt no answer was ever given for.
 public enum ResumeStatus: String, Codable, Sendable {
     case resolved
     case cancelled
 }
 
-/// interrupt への応答。次の run の `RunAgentInput.resume` に載せる。
-/// 1 つの resume 配列が開いている全 interrupt を網羅すること(部分 resume は不可)。
+/// One answer to one interrupt, carried in the next run's `RunAgentInput.resume`.
+///
+/// The array it sits in has to cover every open interrupt; partial resumes are not
+/// allowed, and nothing in this package checks that before the request goes out.
 public struct ResumeEntry: Codable, Sendable, Equatable {
     public var interruptId: String
     public var status: ResumeStatus

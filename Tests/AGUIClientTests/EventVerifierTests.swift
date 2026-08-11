@@ -3,7 +3,7 @@ import Testing
 
 @testable import AGUIClient
 
-/// 上流 `verify.lifecycle.test.ts` から移植したライフサイクル検証。
+/// Lifecycle checks ported from upstream `verify.lifecycle.test.ts`.
 struct EventVerifierTests {
     private func verifyAll(_ events: [AGUIEvent]) throws {
         var verifier = EventVerifier()
@@ -23,7 +23,7 @@ struct EventVerifierTests {
         #expect(throws: AGUIError.self) {
             try verifyAll([.textMessageStart(TextMessageStartEvent(messageId: "m"))])
         }
-        // RUN_ERROR が先頭は合法
+        // RUN_ERROR in first position is legal
         #expect(throws: Never.self) {
             try verifyAll([.runError(RunErrorEvent(message: "x"))])
         }
@@ -36,11 +36,11 @@ struct EventVerifierTests {
     }
 
     @Test func afterRunFinishedOnlyRunErrorOrNewRunStarted() throws {
-        // RUN_ERROR は合法
+        // RUN_ERROR is legal
         try verifyAll([started, finished, .runError(RunErrorEvent(message: "late"))])
-        // 新しい RUN_STARTED は状態リセットの上で合法
+        // A new RUN_STARTED is legal, and resets the per-run state
         try verifyAll([started, finished, started, finished])
-        // それ以外は違反
+        // Anything else is a violation
         #expect(throws: AGUIError.self) {
             try verifyAll([started, finished, .stepStarted(StepStartedEvent(stepName: "s"))])
         }
@@ -60,7 +60,7 @@ struct EventVerifierTests {
             .textMessageEnd(TextMessageEndEvent(messageId: "m1")),
             finished,
         ])
-        // 同一 id の二重 START
+        // Two STARTs with the same id
         #expect(throws: AGUIError.self) {
             try verifyAll([
                 started,
@@ -68,17 +68,17 @@ struct EventVerifierTests {
                 .textMessageStart(TextMessageStartEvent(messageId: "m1")),
             ])
         }
-        // START なしの CONTENT
+        // CONTENT with no START
         #expect(throws: AGUIError.self) {
             try verifyAll([started, .textMessageContent(TextMessageContentEvent(messageId: "m1", delta: "a"))])
         }
-        // START なしの END
+        // END with no START
         #expect(throws: AGUIError.self) {
             try verifyAll([started, .textMessageEnd(TextMessageEndEvent(messageId: "m1"))])
         }
     }
 
-    /// 異なる id の並行メッセージ・交錯は合法(Map 管理、スタックではない)。
+    /// Interleaved messages with different ids are legal: tracked by id, not as a stack.
     @Test func concurrentMessagesAreLegal() throws {
         try verifyAll([
             started,
@@ -105,7 +105,7 @@ struct EventVerifierTests {
         }
     }
 
-    /// TOOL_CALL_RESULT は検証対象外(上流と同じ)— 未知の toolCallId でも通る。
+    /// TOOL_CALL_RESULT is not checked, as upstream: an unknown toolCallId passes.
     @Test func toolCallResultIsNotValidated() throws {
         try verifyAll([
             started,
@@ -114,7 +114,7 @@ struct EventVerifierTests {
         ])
     }
 
-    /// REASONING_MESSAGE_* の順序検証(上流より厳格化した独自ルール)。
+    /// Ordering for REASONING_MESSAGE_*, which is stricter here than upstream.
     @Test func reasoningMessageLifecycleIsEnforced() throws {
         try verifyAll([
             started,
@@ -151,25 +151,26 @@ struct EventVerifierTests {
     }
 
     @Test func runFinishedRejectedWhileEntitiesActive() {
-        // step が未完了
+        // Step still open
         #expect(throws: AGUIError.self) {
             try verifyAll([started, .stepStarted(StepStartedEvent(stepName: "s")), finished])
         }
-        // text message が未完了
+        // Text message still open
         #expect(throws: AGUIError.self) {
             try verifyAll([started, .textMessageStart(TextMessageStartEvent(messageId: "m")), finished])
         }
-        // tool call が未完了
+        // Tool call still open
         #expect(throws: AGUIError.self) {
             try verifyAll([started, .toolCallStart(ToolCallStartEvent(toolCallId: "c", toolCallName: "f")), finished])
         }
-        // reasoning message が未完了(独自ルール)
+        // Reasoning message still open, the rule that goes beyond upstream
         #expect(throws: AGUIError.self) {
             try verifyAll([started, .reasoningMessageStart(ReasoningMessageStartEvent(messageId: "r")), finished])
         }
     }
 
-    /// 検証対象外イベントは run 中なら素通し、RUN_ERROR 後はグローバルゲートで拒否。
+    /// Unchecked events pass through during a run, but the global gate rejects them once
+    /// RUN_ERROR has been seen.
     @Test func unvalidatedEventsPassThroughButRespectGlobalGates() throws {
         try verifyAll([
             started,

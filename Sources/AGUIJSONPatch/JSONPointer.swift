@@ -1,12 +1,12 @@
 import StructuredDataCore
 
-/// RFC 6901 JSON Pointer。
+/// A parsed RFC 6901 pointer: a slash-separated path with its `~0` / `~1` escapes resolved.
 public struct JSONPointer: Sendable, Equatable {
     public struct ParseError: Error, CustomStringConvertible {
         public let description: String
     }
 
-    /// 参照トークン列(アンエスケープ済み)。空配列はドキュメント全体を指す。
+    /// Reference tokens with escapes already resolved. Empty means the whole document.
     public let tokens: [String]
 
     public init(_ string: String) throws {
@@ -38,7 +38,8 @@ public struct JSONPointer: Sendable, Equatable {
 
     public var lastToken: String? { tokens.last }
 
-    /// self が other の真の接頭辞(= other の祖先)かどうか。
+    /// Whether this is a strict ancestor of `other`. A pointer is never a proper prefix of
+    /// itself, which is what makes it usable as the `move` guard.
     public func isProperPrefix(of other: JSONPointer) -> Bool {
         tokens.count < other.tokens.count && Array(other.tokens.prefix(tokens.count)) == tokens
     }

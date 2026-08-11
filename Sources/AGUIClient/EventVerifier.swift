@@ -1,16 +1,16 @@
 import AGUICore
 
-/// プロトコル順序の検証。違反は `AGUIError` を throw し、ストリームを終了させる。
+/// Checks protocol ordering; a violation throws `AGUIError`, which ends the stream.
 ///
-/// ミラー元: `@ag-ui/client` `verify/verify.ts`。上流との意図的な差分:
-/// - `REASONING_MESSAGE_*` に `TEXT_MESSAGE_*` と対称の順序検証を入れる
-///   (上流は型追加に検証が追随していない)
-/// - `*_CHUNK` は展開済みが前提(`ChunkTransform` を先に通す)。届いた場合は
-///   上流同様、検証せず素通しする
+/// Mirrors `verify/verify.ts` in `@ag-ui/client`, with two deliberate differences:
+/// - `REASONING_MESSAGE_*` gets the ordering checks that mirror `TEXT_MESSAGE_*`
+///   (upstream never extended verification to those newer types)
+/// - `*_CHUNK` events are expected to arrive expanded, with `ChunkTransform` run first;
+///   one that reaches here passes through unchecked, as upstream does
 ///
-/// 検証対象外(上流と同じ): TOOL_CALL_RESULT / STATE_* / MESSAGES_SNAPSHOT /
-/// ACTIVITY_* / RAW / CUSTOM / unknown。ただしグローバルゲート
-/// (RUN_ERROR 後の全拒否等)は全イベントに適用する。
+/// Not checked, same as upstream: TOOL_CALL_RESULT / STATE_* / MESSAGES_SNAPSHOT /
+/// ACTIVITY_* / RAW / CUSTOM / unknown. The global gates — rejecting everything after
+/// RUN_ERROR and so on — still apply to every event.
 public struct EventVerifier: Sendable {
     private var runStarted = false
     private var runFinished = false
@@ -24,7 +24,7 @@ public struct EventVerifier: Sendable {
     public init() {}
 
     public mutating func verify(_ event: AGUIEvent) throws {
-        // グローバルゲート(順序が仕様)
+        // Global gates; the order these are tested in is itself the contract
         if runError {
             throw AGUIError(
                 "The run has already errored with 'RUN_ERROR'. No further events can be sent."
@@ -40,7 +40,7 @@ public struct EventVerifier: Sendable {
                     "The run has already finished with 'RUN_FINISHED'. Only 'RUN_ERROR' or a new 'RUN_STARTED' can follow."
                 )
             }
-            // 同一ストリームでの新しい run — 状態をリセットして受理する
+            // A new run on the same stream: reset the per-run state and accept it
             resetRunState()
             runStarted = true
             firstEventReceived = true

@@ -1,8 +1,8 @@
-/// AG-UI のイベント種別。wire 上の `type` ディスクリミネータ値。
+/// The discriminator strings that appear in the `type` field of an event on the wire.
 ///
-/// ミラー元: `@ag-ui/core` `events.ts` の `EventType`。
-/// 上流で deprecated の `THINKING_*` 5 種(1.0.0 で削除予定、`REASONING_*` が後継)は
-/// 実装しない — 受信した場合は未知型として `.unknown` に落ちる。
+/// Mirrors `EventType` in `@ag-ui/core` `events.ts`. The five upstream-deprecated
+/// `THINKING_*` values (scheduled for removal in 1.0.0, superseded by `REASONING_*`)
+/// are deliberately absent; receiving one is not an error, it decodes as `.unknown`.
 public enum AGUIEventType: String, Codable, Sendable, CaseIterable {
     case textMessageStart = "TEXT_MESSAGE_START"
     case textMessageContent = "TEXT_MESSAGE_CONTENT"

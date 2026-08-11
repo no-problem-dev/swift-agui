@@ -116,7 +116,8 @@ struct JSONPatchTests {
         }
     }
 
-    /// 適用はアトミック — 途中で失敗しても元ドキュメントは不変(値型で自然に成立)。
+    /// Application is atomic: a failure part-way leaves the original untouched, which the
+    /// value type gives for free.
     @Test func failedPatchLeavesOriginalIntact() {
         let original = document
         #expect(throws: JSONPatchError.self) {
@@ -131,7 +132,7 @@ struct JSONPatchTests {
         #expect(original.objectValue?["status"] == nil)
     }
 
-    /// STATE_DELTA の生値(wire 形)からの適用。
+    /// Applying operations in the wire form that STATE_DELTA carries.
     @Test func rawOperationsFromWire() throws {
         let result = try applyRawJSON(
             [

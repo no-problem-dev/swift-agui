@@ -2,7 +2,8 @@ import AGUICore
 import AGUIJSONPatch
 import StructuredDataCore
 
-/// apply 層の警告(ストリームを落とさずスキップした事象の通知)。
+/// Something the reducer skipped rather than failed on: the event is dropped and the
+/// stream keeps running.
 public enum AGUIStateWarning: Sendable, Equatable {
     case contentForInactiveMessage(messageId: String)
     case argsForInactiveToolCall(toolCallId: String)
@@ -11,22 +12,23 @@ public enum AGUIStateWarning: Sendable, Equatable {
     case activityDeltaForNonActivity(messageId: String)
 }
 
-/// イベントを messages / state へ還元するデフォルトリデューサ。
+/// Default reducer that folds events into a message list and a state document.
 ///
-/// ミラー元: `@ag-ui/client` `apply/default.ts`(`defaultApplyEvents`)。
-/// 独自リデューサを持つクライアントはこの層を使わなくてよい。
+/// Mirrors `apply/default.ts` (`defaultApplyEvents`) in `@ag-ui/client`. A client with its
+/// own reducer has no need for this layer.
 ///
-/// 上流の 3 つの特殊規則を保持する:
-/// 1. ツールコールの親 assistant メッセージ解決(4 段階)
-/// 2. `TOOL_CALL_RESULT` は所有 assistant メッセージの直後へ挿入
-///    (末尾 append は provider 400 の原因になる)
-/// 3. `MESSAGES_SNAPSHOT` は編集ベースマージ(activity / reasoning の
-///    全か無か規則でクライアント専用メッセージを保護)
+/// It keeps the three special rules from upstream:
+/// 1. Four-step resolution of the assistant message a tool call belongs to
+/// 2. `TOOL_CALL_RESULT` is inserted right after its owning assistant message; appending
+///    it at the end is what makes providers answer 400
+/// 3. `MESSAGES_SNAPSHOT` merges by edit, with an all-or-nothing rule per role that keeps
+///    client-only activity / reasoning messages alive
 public struct AGUIClientState: Sendable, Equatable {
     public var messages: [AGUIMessage]
     public var state: StructuredValue
-    /// 直近の run が interrupt で終わった場合の未解決 interrupt。
-    /// `RUN_ERROR` ではクリアされない(上流仕様)。永続化は利用側の責務。
+    /// Interrupts left open by the last run that finished with an interrupt outcome.
+    /// `RUN_ERROR` does not clear them, matching upstream. Persisting them is the
+    /// caller's job.
     public var pendingInterrupts: [Interrupt]
 
     public init(
@@ -39,8 +41,9 @@ public struct AGUIClientState: Sendable, Equatable {
         self.pendingInterrupts = pendingInterrupts
     }
 
-    /// 1 イベントを適用する。回復可能な不整合は警告として返し、状態は進める。
-    /// `*_CHUNK` は展開済みが前提(届いたら `AGUIError` を throw)。
+    /// Applies one event, reporting recoverable inconsistencies as warnings instead of
+    /// failing, and moving the state forward regardless.
+    /// `*_CHUNK` events must be expanded first; one that arrives here throws `AGUIError`.
     @discardableResult
     public mutating func apply(_ event: AGUIEvent) throws -> [AGUIStateWarning] {
         switch event {
@@ -48,7 +51,7 @@ public struct AGUIClientState: Sendable, Equatable {
             throw AGUIError("\(event.typeName) must be transformed before being applied (run ChunkTransform first)")
 
         case .textMessageStart(let start):
-            // 既存 id(先行する TOOL_CALL_START が作った assistant 等)には触れない
+            // Leave an existing id alone; a preceding TOOL_CALL_START may have made it
             if !messages.contains(where: { $0.id == start.messageId }) {
                 messages.append(Self.emptyMessage(id: start.messageId, role: start.role, name: start.name))
             }
@@ -131,7 +134,7 @@ public struct AGUIClientState: Sendable, Equatable {
 
         case .activityDelta(let delta):
             guard let index = messages.firstIndex(where: { $0.id == delta.messageId }) else {
-                // 存在しないアクティビティへの delta は no-op(上流仕様)
+                // A delta for an activity that is not there is a no-op, matching upstream
                 return []
             }
             guard case .activity(var activity) = messages[index] else {
@@ -147,7 +150,7 @@ public struct AGUIClientState: Sendable, Equatable {
             }
 
         case .runStarted(let started):
-            // サーバーが正準の入力を注入した場合、未知 id のメッセージを取り込む
+            // When the server echoes the canonical input, adopt the messages not seen yet
             if let injected = started.input?.messages {
                 let known = Set(messages.map(\.id))
                 messages.append(contentsOf: injected.filter { !known.contains($0.id) })
@@ -163,7 +166,7 @@ public struct AGUIClientState: Sendable, Equatable {
             return []
 
         case .runError:
-            // pendingInterrupts はクリアしない(上流仕様)
+            // pendingInterrupts survive a run error, matching upstream
             return []
 
         case .reasoningMessageStart(let start):
@@ -189,28 +192,28 @@ public struct AGUIClientState: Sendable, Equatable {
         }
     }
 
-    // MARK: - 特殊規則 1: ツールコールの親メッセージ解決(4 段階)
+    // MARK: - Special rule 1: four-step resolution of a tool call's parent message
 
     private mutating func resolveOrCreateAssistantMessage(parentMessageId: String?, toolCallId: String) -> Int {
         if let parentMessageId {
             if let index = messages.firstIndex(where: { $0.id == parentMessageId }) {
                 if case .assistant = messages[index] {
-                    return index // 1. 既存 assistant に合流
+                    return index // 1. Join the assistant that is already there
                 }
-                // 2. id 衝突(非 assistant)→ toolCallId をキーに新規
+                // 2. Id taken by a non-assistant message: start a new one under toolCallId
                 messages.append(.assistant(AssistantMessage(id: toolCallId)))
                 return messages.count - 1
             }
-            // 3. parentMessageId 指定だが不在 → その id で新規
+            // 3. parentMessageId given but absent: start a new one under that id
             messages.append(.assistant(AssistantMessage(id: parentMessageId)))
             return messages.count - 1
         }
-        // 4. 無指定 → toolCallId をキーに新規
+        // 4. Not given at all: start a new one under toolCallId
         messages.append(.assistant(AssistantMessage(id: toolCallId)))
         return messages.count - 1
     }
 
-    // MARK: - 特殊規則 2: TOOL_CALL_RESULT の挿入位置
+    // MARK: - Special rule 2: where TOOL_CALL_RESULT is inserted
 
     private mutating func insertToolResult(_ result: ToolCallResultEvent) {
         let toolMessage = AGUIMessage.tool(
@@ -225,8 +228,8 @@ public struct AGUIClientState: Sendable, Equatable {
             messages.append(toolMessage)
             return
         }
-        // 所有 assistant の直後、既存の tool メッセージ列の後ろに挿入
-        // (chat → tool → chat ループで後続テキストより前に結果を置くための正当性要件)
+        // Right after the owning assistant, behind any tool messages already there:
+        // in a chat -> tool -> chat loop the result has to precede the text that follows it
         var insertIndex = ownerIndex + 1
         while insertIndex < messages.count, case .tool = messages[insertIndex] {
             insertIndex += 1
@@ -234,7 +237,7 @@ public struct AGUIClientState: Sendable, Equatable {
         messages.insert(toolMessage, at: insertIndex)
     }
 
-    // MARK: - 特殊規則 3: MESSAGES_SNAPSHOT の編集ベースマージ
+    // MARK: - Special rule 3: edit-based merge of MESSAGES_SNAPSHOT
 
     private mutating func mergeMessagesSnapshot(_ snapshot: [AGUIMessage]) {
         let snapshotHasActivity = snapshot.contains { $0.role == .activity }
@@ -252,7 +255,7 @@ public struct AGUIClientState: Sendable, Equatable {
                 merged.append(replacement)
                 consumedIds.insert(message.id)
             }
-            // snapshot に無いローカルメッセージは破棄
+            // A local message absent from the snapshot is dropped
         }
         for message in snapshot where !consumedIds.contains(message.id) {
             merged.append(message)
@@ -307,7 +310,7 @@ public struct AGUIClientState: Sendable, Equatable {
                 message.encryptedValue = event.encryptedValue
                 messages[index] = .reasoning(message)
             case .activity:
-                break // encryptedValue フィールドを持たない(上流仕様)
+                break // Activity messages have no encryptedValue field, matching upstream
             }
         }
     }

@@ -1,6 +1,7 @@
 import StructuredDataCore
 
-/// `STATE_SNAPSHOT`。共有 state の完全置換(マージではない)。
+/// `STATE_SNAPSHOT` — replaces the shared state outright; keys absent from `snapshot`
+/// are gone, because this is a replacement and never a merge.
 public struct StateSnapshotEvent: Codable, Sendable, Equatable {
     public var snapshot: StructuredValue
     public var timestamp: Int64?
@@ -17,8 +18,10 @@ public struct StateSnapshotEvent: Codable, Sendable, Equatable {
     }
 }
 
-/// `STATE_DELTA`。RFC 6902 JSON Patch による増分更新。
-/// パッチ操作は wire 上の生値のまま保持する(適用は AGUIState / AGUIJSONPatch の責務)。
+/// `STATE_DELTA` — an incremental update to the shared state as an RFC 6902 JSON Patch.
+///
+/// The operations stay as raw wire values and are never validated here; applying them,
+/// and deciding what a failed patch means, belongs to `AGUIState` / `AGUIJSONPatch`.
 public struct StateDeltaEvent: Codable, Sendable, Equatable {
     public var delta: [StructuredValue]
     public var timestamp: Int64?
@@ -35,9 +38,12 @@ public struct StateDeltaEvent: Codable, Sendable, Equatable {
     }
 }
 
-/// `MESSAGES_SNAPSHOT`。会話履歴のスナップショット。
-/// activity / reasoning ロールは「1 つでも含まれていればそのロールの完全集合」
-/// という編集ベースマージの規則がある(適用は AGUIState の責務)。
+/// `MESSAGES_SNAPSHOT` — the server's view of the conversation so far.
+///
+/// The apply layer merges rather than swaps: for the client-only `activity` and
+/// `reasoning` roles, a snapshot containing even one message of that role is treated as
+/// the complete set for it, and existing ones missing from the snapshot are dropped;
+/// a snapshot containing none leaves them untouched.
 public struct MessagesSnapshotEvent: Codable, Sendable, Equatable {
     public var messages: [AGUIMessage]
     public var timestamp: Int64?

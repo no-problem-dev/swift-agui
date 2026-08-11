@@ -10,13 +10,13 @@ struct RunAgentInputCodingTests {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let json = String(decoding: try encoder.encode(input), as: UTF8.self)
-        // messages / tools / context / state / forwardedProps は省略不可(空でも送る)
+        // messages / tools / context / state / forwardedProps are never omitted, even empty
         #expect(json.contains(#""messages":[]"#))
         #expect(json.contains(#""tools":[]"#))
         #expect(json.contains(#""context":[]"#))
         #expect(json.contains(#""state":{}"#))
         #expect(json.contains(#""forwardedProps":{}"#))
-        // resume は明示指定時のみ
+        // resume is written only when it was set explicitly
         #expect(!json.contains("resume"))
     }
 
@@ -60,7 +60,7 @@ struct RunAgentInputCodingTests {
         let data = try JSONEncoder().encode(capabilities)
         let decoded = try JSONDecoder().decode(AgentCapabilities.self, from: data)
         #expect(decoded == capabilities)
-        // 省略 = 未宣言: 指定しなかったカテゴリはキー自体が出ない
+        // omitted means undeclared: a category left unset produces no key at all
         let json = String(decoding: data, as: UTF8.self)
         #expect(!json.contains("multimodal"))
         #expect(!json.contains("execution"))

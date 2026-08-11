@@ -1,16 +1,16 @@
 import AGUICore
 
-/// `*_CHUNK` イベントを START / CONTENT / END の三つ組へ展開するステートフル変換。
-/// サーバー実装の揺れ(省略形での emit)をクライアント側で吸収する。
+/// Stateful expansion of `*_CHUNK` events into START / CONTENT / END triples, absorbing
+/// servers that emit the shorthand form.
 ///
-/// ミラー元: `@ag-ui/client` `chunks/transform.ts`。
+/// Mirrors `chunks/transform.ts` in `@ag-ui/client`.
 ///
-/// 規則:
-/// - 初回チャンクの必須フィールド: text / reasoning は `messageId`、
-///   tool は `toolCallId` と `toolCallName`
-/// - モード変更・id 変更・非チャンクイベントの到来・ストリーム終端で
-///   開いているエンティティを暗黙クローズ(合成 END を emit)する
-/// - クローズしないパススルー例外: RAW / ACTIVITY_SNAPSHOT / ACTIVITY_DELTA /
+/// Rules:
+/// - The first chunk must carry `messageId` for text / reasoning, and both `toolCallId`
+///   and `toolCallName` for a tool call; without them the transform throws `AGUIError`
+/// - A mode change, an id change, any non-chunk event, or the end of the stream closes the
+///   open entity implicitly by emitting a synthesized END
+/// - Pass-through exceptions that leave it open: RAW / ACTIVITY_SNAPSHOT / ACTIVITY_DELTA /
 ///   REASONING_ENCRYPTED_VALUE
 public struct ChunkTransform: Sendable {
     private enum Mode: Equatable {
@@ -23,7 +23,9 @@ public struct ChunkTransform: Sendable {
 
     public init() {}
 
-    /// 1 イベントを正規形の列へ変換する。
+    /// Converts one event into its normalized form: none, one, or several events out.
+    ///
+    /// - Throws: `AGUIError` when a chunk that opens a new entity lacks the ids to name it.
     public mutating func transform(_ event: AGUIEvent) throws -> [AGUIEvent] {
         switch event {
         case .textMessageChunk(let chunk):
@@ -33,7 +35,7 @@ public struct ChunkTransform: Sendable {
         case .reasoningMessageChunk(let chunk):
             return try transformReasoningChunk(chunk)
         case .raw, .activitySnapshot, .activityDelta, .reasoningEncryptedValue:
-            // パススルー: 開いているエンティティをクローズしない
+            // Pass-through: leaves the open entity open
             return [event]
         default:
             var events = closeOpenEntity()
@@ -42,7 +44,7 @@ public struct ChunkTransform: Sendable {
         }
     }
 
-    /// ストリーム終端。開いているエンティティをクローズする。
+    /// Ends the stream, returning the synthesized END for whatever entity is still open.
     public mutating func finish() -> [AGUIEvent] {
         closeOpenEntity()
     }

@@ -1,6 +1,8 @@
-/// AG-UI プロトコル違反・契約違反のエラー。
+/// Signals that a producer broke the protocol contract: events arriving out of order,
+/// or a chunk missing a field the expansion layer requires.
 ///
-/// ミラー元: `@ag-ui/core` の `AGUIError`。
+/// Mirrors `AGUIError` in `@ag-ui/core`. It carries a human-readable message and nothing
+/// machine-readable, so a consumer can report it but cannot branch on it — the stream is over.
 public struct AGUIError: Error, Sendable, Equatable, CustomStringConvertible {
     public let message: String
 

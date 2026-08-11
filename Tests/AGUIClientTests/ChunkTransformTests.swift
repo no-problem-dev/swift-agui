@@ -60,7 +60,7 @@ struct ChunkTransformTests {
         ])
     }
 
-    /// id が変わったら現在のエンティティを閉じて新規に開く。
+    /// A changed id closes the current entity and opens a fresh one.
     @Test func idChangeClosesAndReopens() throws {
         var transform = ChunkTransform()
         var events: [AGUIEvent] = []
@@ -77,7 +77,7 @@ struct ChunkTransformTests {
         ])
     }
 
-    /// モード変更(text → tool)も暗黙クローズする。
+    /// A mode change (text to tool) closes implicitly as well.
     @Test func modeChangeClosesCurrentEntity() throws {
         var transform = ChunkTransform()
         var events: [AGUIEvent] = []
@@ -93,7 +93,7 @@ struct ChunkTransformTests {
         ])
     }
 
-    /// 非チャンクイベントは開いているエンティティを閉じてから通す。
+    /// A non-chunk event closes the open entity before it passes through.
     @Test func nonChunkEventClosesOpenEntity() throws {
         var transform = ChunkTransform()
         var events: [AGUIEvent] = []
@@ -107,7 +107,7 @@ struct ChunkTransformTests {
         ])
     }
 
-    /// パススルー例外(ACTIVITY_SNAPSHOT 等)はエンティティを閉じない。
+    /// The pass-through exceptions, ACTIVITY_SNAPSHOT among them, leave the entity open.
     @Test func passthroughEventsDoNotClose() throws {
         var transform = ChunkTransform()
         var events: [AGUIEvent] = []

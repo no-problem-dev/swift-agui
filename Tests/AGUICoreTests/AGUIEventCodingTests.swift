@@ -4,15 +4,15 @@ import Testing
 
 @testable import AGUICore
 
-/// wire JSON との相互変換を固定する。JSON フィクスチャは
-/// `@ag-ui/core` 0.0.57 のスキーマから書き起こした golden。
+/// Pins the conversion to and from wire JSON. The fixtures are goldens transcribed from
+/// the `@ag-ui/core` 0.0.57 schemas, so a diff here means the wire format moved.
 struct AGUIEventCodingTests {
     private func decodeEvent(_ json: String) throws -> AGUIEvent {
         try JSONDecoder().decode(AGUIEvent.self, from: Data(json.utf8))
     }
 
-    /// エンコード → デコードで同値に戻ることと、エンコード結果に期待キーが
-    /// 全て含まれることを確認する。
+    /// Checks that encoding then decoding gives back an equal value, and that every
+    /// expected fragment appears in the encoded JSON.
     private func assertRoundTrip(
         _ event: AGUIEvent,
         expectedFragments: [String],
@@ -58,7 +58,7 @@ struct AGUIEventCodingTests {
         #expect(interrupts[0].reason == Interrupt.Reason.inputRequired)
     }
 
-    /// Python SDK は `outcome: null` を emit する — 省略として受理する(MUST)。
+    /// The Python SDK emits `outcome: null`, which must be accepted as an omission.
     @Test func runFinishedNullOutcomeIsAccepted() throws {
         let json = """
         {"type":"RUN_FINISHED","threadId":"t1","runId":"r1","outcome":null}
@@ -70,7 +70,7 @@ struct AGUIEventCodingTests {
         #expect(event.outcome == nil)
     }
 
-    /// interrupt outcome の空 interrupts は仕様違反(min 1)。
+    /// An interrupt outcome with an empty `interrupts` array violates the minimum of one.
     @Test func runFinishedEmptyInterruptsRejected() throws {
         let json = """
         {"type":"RUN_FINISHED","threadId":"t1","runId":"r1","outcome":{"type":"interrupt","interrupts":[]}}
@@ -105,7 +105,7 @@ struct AGUIEventCodingTests {
         )
     }
 
-    /// .NET 製アダプタは `parentMessageId: null` を emit する — 省略として受理する(MUST)。
+    /// .NET adapters emit `parentMessageId: null`, which must be accepted as an omission.
     @Test func toolCallStartNullParentMessageIdIsAccepted() throws {
         let json = """
         {"type":"TOOL_CALL_START","toolCallId":"c1","toolCallName":"search_recipes","parentMessageId":null}
@@ -158,7 +158,7 @@ struct AGUIEventCodingTests {
         )
     }
 
-    /// 未知の type は .unknown に落ち、元のオブジェクト全体を保持する。
+    /// An unrecognised type decodes to `.unknown` and keeps the whole original object.
     @Test func unknownEventTypeIsTolerated() throws {
         let json = """
         {"type":"SOME_FUTURE_EVENT","payload":{"x":1}}
@@ -171,7 +171,8 @@ struct AGUIEventCodingTests {
         #expect(raw["payload"]["x"].numberValue != nil)
     }
 
-    /// 上流 deprecated の THINKING_* は実装しない — 未知型として受理する。
+    /// The upstream-deprecated THINKING_* events are not modelled, so they are accepted
+    /// as unknown rather than rejected.
     @Test func deprecatedThinkingEventsFallToUnknown() throws {
         let event = try decodeEvent(#"{"type":"THINKING_START","title":"x"}"#)
         guard case .unknown(let type, _) = event else {
@@ -181,7 +182,7 @@ struct AGUIEventCodingTests {
         #expect(type == "THINKING_START")
     }
 
-    /// 未知フィールドは無視して受理する(前方互換の MUST)。
+    /// Unrecognised fields must be ignored, not rejected — the forward-compatibility rule.
     @Test func unknownFieldsAreIgnored() throws {
         let json = """
         {"type":"TEXT_MESSAGE_END","messageId":"m1","someFutureField":true}

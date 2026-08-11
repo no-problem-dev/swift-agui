@@ -75,7 +75,7 @@ struct MessageCodingTests {
         }
     }
 
-    /// レガシー binary パートは実装しない(typed 形が正)。
+    /// The legacy binary part is not implemented; the typed parts are the only valid form.
     @Test func legacyBinaryPartIsRejected() throws {
         let json = """
         {"role":"user","id":"u1","content":[{"type":"binary","mimeType":"image/png","data":"QUJD"}]}

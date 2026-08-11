@@ -1,10 +1,14 @@
 import AGUICore
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
-/// HTTP レスポンスがストリームとして成立しなかったときのエラー。
+/// Thrown when the agent answers with a non-2xx status, before any event is parsed.
 public struct AGUIHTTPError: Error, Sendable, CustomStringConvertible {
     public let statusCode: Int
-    /// レスポンスボディ(診断用。JSON ならサーバーのエラーペイロード)。
+    /// Response body for diagnosis — the server's error payload when it answers JSON.
+    /// Read up to 1 MiB and silently cut off past that, so a long body arrives truncated.
     public let body: String
 
     public init(statusCode: Int, body: String) {
@@ -15,16 +19,17 @@ public struct AGUIHTTPError: Error, Sendable, CustomStringConvertible {
     public var description: String { "HTTP \(statusCode): \(body)" }
 }
 
-/// HTTP + SSE の AG-UI エージェント接続。
+/// Drives a run over HTTP and reads the reply as a Server-Sent Events stream.
 ///
-/// ミラー元: `@ag-ui/client` の `HttpAgent`。
-/// - リクエスト: 単一 URL への `POST`、ボディ = `RunAgentInput` の JSON、
+/// Mirrors `HttpAgent` in `@ag-ui/client`.
+/// - Request: `POST` to a single URL, body = `RunAgentInput` as JSON,
 ///   `Accept: text/event-stream`
-/// - レスポンス: content-type がバイナリプロトコル完全一致ならエラー(非対応)、
-///   それ以外は SSE としてパースする
-/// - キャンセルは例外ではなく `RUN_ERROR(code: "abort")` に正規化してから終了する
+/// - Response: a content type matching the binary protocol exactly is refused with
+///   `AGUIError`; anything else is parsed as SSE, whatever its content type says
+/// - Cancellation is not raised as an error. The stream yields
+///   `RUN_ERROR(code: "abort")` and then finishes normally
 public final class AGUIHTTPAgent: AGUIAgent {
-    /// 非 2xx レスポンスのボディ読み取り上限。
+    /// How much of a non-2xx body is read; the rest of the response is left unread.
     private static let maxErrorBodySize = 1024 * 1024
 
     private let url: URL
@@ -33,20 +38,20 @@ public final class AGUIHTTPAgent: AGUIAgent {
     private let omittedInputKeys: Set<String>
 
     /// - Parameters:
-    ///   - url: エージェントのエンドポイント(パス形状の規定は仕様にない)。
-    ///   - headers: 追加ヘッダ(認証トークン等の注入ポイント)。
-    ///   - session: 差し替え可能な URLSession(テスト・カスタム構成用)。
-    ///   - omittedInputKeys: **ボディから落とすトップレベルのキー。**
-    ///     既定は空 = 仕様どおり全部送る。
+    ///   - url: The agent endpoint. The spec says nothing about the shape of the path.
+    ///   - headers: Extra headers, the injection point for auth tokens and the like.
+    ///   - session: Substitutable URLSession, for tests and custom configurations.
+    ///   - omittedInputKeys: **Top-level keys to strip from the body.**
+    ///     Empty by default, which sends everything the spec defines.
     ///
-    ///     `RunAgentInput`(`AGUICore`)は上流の写しなので、使わない項目も
-    ///     型としては必須のまま持つ。一方で**実際に何を送るかはクライアントの
-    ///     裁量**で、繋ぎ先が読まない項目(`state` / `tools` など)を毎リクエスト
-    ///     送る値打ちは無い。その線引きをここで表す。
+    ///     `RunAgentInput` (`AGUICore`) is a copy of the upstream type, so fields nobody
+    ///     reads are still required by the type. **What actually goes on the wire is the
+    ///     client's call**, and there is no value in sending `state` or `tools` on every
+    ///     request to a server that ignores them. This is where that line is drawn.
     ///
-    ///     落とせるのはトップレベルのキーだけ。識別子(`threadId` / `runId`)まで
-    ///     落とすと成立しないが、何が要るかは繋ぎ先が決めることなので
-    ///     ここでは判定しない — 呼ぶ側の責任。
+    ///     Only top-level keys can be dropped. Stripping the identifiers
+    ///     (`threadId` / `runId`) breaks the run, but which fields a given server needs is
+    ///     that server's business, so nothing here rejects it — the caller carries the risk.
     public init(
         url: URL,
         headers: [String: String] = [:],
@@ -77,14 +82,15 @@ public final class AGUIHTTPAgent: AGUIAgent {
         }
     }
 
-    /// リクエストボディを作る。
+    /// Builds the request body.
     ///
-    /// `omittedInputKeys` が空なら**素直にエンコードするだけ**(既定の経路は
-    /// 今までと 1 バイトも変わらない)。指定があるときだけ、エンコード後の
-    /// トップレベルからそのキーを落とす。
+    /// With `omittedInputKeys` empty the input is **encoded straight through**. Otherwise
+    /// the encoded JSON is re-serialized without those top-level keys, which as a side
+    /// effect also sorts the remaining ones.
     ///
-    /// 型を書き換えるのではなく出力から落とすのは、`RunAgentInput` が上流の
-    /// 写しだから — 型は仕様どおりのまま、送り方だけをここで変える。
+    /// Keys are dropped from the output rather than from the type because `RunAgentInput`
+    /// is a copy of upstream: the type stays as the spec defines it, and only what is sent
+    /// changes here.
     private func encodeBody(_ input: RunAgentInput) throws -> Data {
         let data = try JSONEncoder().encode(input)
         guard !omittedInputKeys.isEmpty else {
@@ -153,7 +159,8 @@ public final class AGUIHTTPAgent: AGUIAgent {
     }
 }
 
-/// メディアタイプ定数(AGUIEncoder と重複定義しない、クライアント側の最小セット)。
+/// The smallest set of media types the client needs, kept here so this target does not
+/// have to depend on AGUIEncoder for two string constants.
 enum AGUIMediaTypeConstants {
     static let eventStream = "text/event-stream"
     static let protobuf = "application/vnd.ag-ui.event+proto"

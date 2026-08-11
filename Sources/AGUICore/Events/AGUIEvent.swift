@@ -1,16 +1,17 @@
 import StructuredDataCore
 
-/// AG-UI のイベント。wire 上は `{"type": "RUN_STARTED", ...}` の JSON 1 オブジェクト。
+/// One streamed agent event, which is a single JSON object on the wire discriminated
+/// by `type`, as in `{"type": "RUN_STARTED", ...}`.
 ///
-/// ミラー元: `@ag-ui/core` `events.ts` の `EventSchemas`(discriminated union)。
-/// 上流 deprecated の `THINKING_*` は実装しない(未知型として `.unknown` に落ちる)。
+/// Mirrors the `EventSchemas` discriminated union in `@ag-ui/core` `events.ts`.
+/// Upstream-deprecated `THINKING_*` events are not modelled and arrive as `.unknown`.
 ///
-/// 前方互換の規則:
-/// - 未知の `type` は `.unknown` にデコードする(落とさない・黙って捨てない)。
-///   `raw` に元のオブジェクト全体を保持するため、パススルーや診断に使える。
-/// - 既知の `type` でペイロードが不正な場合はデコードエラーを throw する
-///   (上流 zod と同じ「スキーマ違反はストリームエラー」の意味論)。
-/// - 未知のフィールドは無視して受理する。
+/// Forward-compatibility rules a consumer can rely on:
+/// - An unrecognised `type` decodes to `.unknown` rather than throwing, and keeps the
+///   entire original object in `raw`, so nothing is dropped and it can still be forwarded.
+/// - A recognised `type` with a malformed payload throws a decoding error instead, which
+///   matches the upstream zod semantics where a schema violation ends the stream.
+/// - Fields this version does not know about are accepted and ignored.
 public enum AGUIEvent: Sendable, Equatable {
     case textMessageStart(TextMessageStartEvent)
     case textMessageContent(TextMessageContentEvent)
@@ -40,10 +41,12 @@ public enum AGUIEvent: Sendable, Equatable {
     case reasoningMessageChunk(ReasoningMessageChunkEvent)
     case reasoningEnd(ReasoningEndEvent)
     case reasoningEncryptedValue(ReasoningEncryptedValueEvent)
-    /// 未知のイベント型。`raw` は wire 上のオブジェクト全体(`type` を含む)。
+    /// An event type this version does not model; `raw` holds the whole wire object,
+    /// including its `type` field, and re-encoding reproduces it byte for byte.
     case unknown(type: String, raw: StructuredValue)
 
-    /// 既知イベントの種別。`.unknown` は nil。
+    /// The modelled discriminator, or `nil` for `.unknown` — reach for `typeName` when
+    /// what matters is the string that was actually on the wire.
     public var eventType: AGUIEventType? {
         switch self {
         case .textMessageStart: .textMessageStart
@@ -78,7 +81,7 @@ public enum AGUIEvent: Sendable, Equatable {
         }
     }
 
-    /// wire 上の `type` 文字列。`.unknown` も含めて常に返る。
+    /// The `type` string as it appeared on the wire, available for `.unknown` events too.
     public var typeName: String {
         switch self {
         case .unknown(let type, _): type

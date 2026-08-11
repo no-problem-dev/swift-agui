@@ -1,6 +1,7 @@
 import StructuredDataCore
 
-/// RFC 6902 のパッチ操作。
+/// One operation of an RFC 6902 patch; `value` and `from` are each required by only some
+/// of the six kinds.
 public struct JSONPatchOperation: Codable, Sendable, Equatable {
     public enum Op: String, Codable, Sendable {
         case add
@@ -24,7 +25,8 @@ public struct JSONPatchOperation: Codable, Sendable, Equatable {
     }
 }
 
-/// RFC 6902 JSON Patch の適用エラー。
+/// Thrown when a patch cannot be applied: a malformed operation, a pointer that does not
+/// resolve, or a `test` whose value did not match.
 public struct JSONPatchError: Error, Sendable, CustomStringConvertible {
     public let description: String
 
@@ -33,10 +35,15 @@ public struct JSONPatchError: Error, Sendable, CustomStringConvertible {
     }
 }
 
-/// RFC 6902 JSON Patch。`StructuredValue` に対して適用する。
-/// 値型のため適用はアトミック(途中で失敗しても呼び出し側のドキュメントは不変)。
+/// Applies RFC 6902 patches to a `StructuredValue`, supporting all six operations
+/// (add, remove, replace, move, copy, test).
+/// Application is atomic because the document is a value type: a failure part-way through
+/// leaves the caller's document untouched.
 public enum JSONPatch {
-    /// 型付き操作列を適用し、新しいドキュメントを返す。
+    /// Returns a new document with the operations applied in order.
+    ///
+    /// - Throws: `JSONPatchError` on the first operation that does not apply — an
+    ///   unresolvable path, an out-of-range array index, or a failed `test`.
     public static func apply(
         _ operations: [JSONPatchOperation],
         to document: StructuredValue
@@ -48,7 +55,11 @@ public enum JSONPatch {
         return result
     }
 
-    /// wire 上の生値(`STATE_DELTA.delta` / `ACTIVITY_DELTA.patch`)を適用する。
+    /// Applies operations still in their wire form, as `STATE_DELTA.delta` and
+    /// `ACTIVITY_DELTA.patch` carry them.
+    ///
+    /// - Throws: `JSONPatchError` when an entry is not an object, is missing `op` or
+    ///   `path`, or names an `op` outside the six RFC 6902 kinds.
     public static func apply(
         raw operations: [StructuredValue],
         to document: StructuredValue
@@ -190,8 +201,8 @@ public enum JSONPatch {
         }
     }
 
-    /// tokens の最後の 1 つ手前まで辿り、最後のコンテナに `transform` を適用して
-    /// ドキュメントを再構築する。
+    /// Walks down to the container holding the last token, applies `transform` there, and
+    /// rebuilds the document around the result.
     private static func mutate(
         _ document: StructuredValue,
         tokens: [String],
@@ -221,7 +232,8 @@ public enum JSONPatch {
         }
     }
 
-    /// RFC 6901 の配列インデックス。"-" は末尾(add のみ)、先行ゼロは不正。
+    /// Resolves an RFC 6901 array index. "-" means past the end and is valid for add only;
+    /// a leading zero is rejected. Returns nil for anything out of range.
     private static func arrayIndex(_ token: String, count: Int, allowEnd: Bool) -> Int? {
         if token == "-" {
             return allowEnd ? count : nil

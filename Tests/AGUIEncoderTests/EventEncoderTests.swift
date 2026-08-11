@@ -11,7 +11,7 @@ struct EventEncoderTests {
         #expect(frame.hasPrefix("data: {"))
         #expect(frame.hasSuffix("}\n\n"))
         #expect(!frame.contains("event:"))
-        // フレーム内に data 行は 1 行だけ
+        // Exactly one data line inside the frame
         #expect(frame.components(separatedBy: "\n").filter { $0.hasPrefix("data:") }.count == 1)
     }
 

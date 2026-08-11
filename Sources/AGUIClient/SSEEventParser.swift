@@ -1,21 +1,22 @@
 import AGUICore
 import Foundation
 
-/// SSE ストリームのインクリメンタルパーサ。バイト列を受けて、完成した
-/// イベントの `data` ペイロード(JSON 文字列)を返す。
+/// Incremental parser that takes the bytes of an SSE stream and hands back the `data`
+/// payload (a JSON string) of every completed event.
 ///
-/// 受理規則(ミラー元: `@ag-ui/client` `transform/sse.ts`):
-/// - イベント境界は空行(`\n\n`)。不完全な断片はバッファに保持する
-/// - `data:` 行のみ処理し、コロン直後のスペースは 1 個だけ除去する
-/// - 複数の `data:` 行は `\n` で連結して 1 つのペイロードにする
-/// - `event:` / `id:` / `retry:` / コメント行(`:` 始まり。キープアライブ
-///   `: ping` を含む)は無視する
-/// - 終端センチネルは存在しない。EOF 時に `finish()` でバッファ残余を処理する
+/// Accepting rules, mirroring `transform/sse.ts` in `@ag-ui/client`:
+/// - Events are separated by a blank line (`\n\n`); an incomplete fragment stays buffered
+/// - Only `data:` lines are read, and exactly one space after the colon is stripped
+/// - Several `data:` lines in one event join with `\n` into a single payload
+/// - `event:` / `id:` / `retry:` and comment lines (leading `:`, which covers the
+///   `: ping` keep-alive) are ignored
+/// - There is no terminating sentinel; at EOF `finish()` flushes what is still buffered
 ///
-/// バイトレベルで境界を検出するため、UTF-8 のマルチバイト文字がチャンク境界で
-/// 分断されても壊れない(String 変換は完成したイベント単位でのみ行う)。
+/// Boundaries are found byte by byte, so a UTF-8 multi-byte character split across chunks
+/// survives — bytes become a String only once a whole event is in hand.
 public struct SSEEventParser: Sendable {
-    /// バッファ上限。終端の空行を送らずバッファを膨らませる DoS への防御。
+    /// Ceiling on one unterminated event, guarding against a producer that grows the
+    /// buffer forever by never sending the blank line.
     public static let maxBufferSize = 8 * 1024 * 1024
 
     private var buffer: [UInt8] = []
@@ -23,7 +24,10 @@ public struct SSEEventParser: Sendable {
 
     public init() {}
 
-    /// バイト列を追加し、完成したイベントの data ペイロードを返す。
+    /// Appends bytes and returns the data payloads of every event completed so far.
+    ///
+    /// - Throws: `AGUIError` once a single event exceeds `maxBufferSize`. The parser keeps
+    ///   the oversized buffer, so every later call throws too.
     public mutating func feed(_ bytes: some Sequence<UInt8>) throws -> [String] {
         for byte in bytes {
             try feed(byte)
@@ -31,7 +35,9 @@ public struct SSEEventParser: Sendable {
         return drainPayloads()
     }
 
-    /// 1 バイトを追加する。完成したペイロードは内部に蓄積される。
+    /// Appends one byte; completed payloads pile up internally until they are drained.
+    ///
+    /// - Throws: `AGUIError` once a single event exceeds `maxBufferSize`.
     public mutating func feed(_ byte: UInt8) throws {
         if byte == UInt8(ascii: "\n"), buffer.last == UInt8(ascii: "\n") {
             let block = buffer
@@ -47,14 +53,14 @@ public struct SSEEventParser: Sendable {
         }
     }
 
-    /// 蓄積済みペイロードを取り出す。
+    /// Removes and returns the payloads accumulated since the last drain.
     public mutating func drainPayloads() -> [String] {
         let drained = payloads
         payloads.removeAll(keepingCapacity: true)
         return drained
     }
 
-    /// ストリーム終端。バッファ残余を最後のイベントとして処理する。
+    /// Ends the stream, parsing any unterminated trailing bytes as one final event.
     public mutating func finish() -> [String] {
         if !buffer.isEmpty {
             let block = buffer
@@ -66,9 +72,9 @@ public struct SSEEventParser: Sendable {
         return drainPayloads()
     }
 
-    /// 1 イベントブロック(空行区切りの内側)から data ペイロードを組み立てる。
-    /// 行分割もバイトレベルで行う(Swift の String は `\r\n` を 1 書記素として
-    /// 扱うため、Character 単位の分割では CRLF 行末を処理できない)。
+    /// Assembles the data payload of one event block, the bytes between blank lines.
+    /// Lines are split at byte level too: Swift's String treats `\r\n` as one grapheme,
+    /// so splitting by Character cannot strip a CRLF line ending.
     private static func parseBlock(_ block: [UInt8]) -> String? {
         let prefix = Array("data:".utf8)
         var dataLines: [String] = []

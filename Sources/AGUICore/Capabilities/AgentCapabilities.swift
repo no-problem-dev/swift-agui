@@ -1,12 +1,13 @@
 import StructuredDataCore
 
-// エージェント能力の型付きスナップショット。
-// ミラー元: `@ag-ui/core` `capabilities.ts`。
+// A typed snapshot of what an agent says it can do. Mirrors `@ag-ui/core` `capabilities.ts`.
 //
-// discovery only — wire 上のネゴシエーションは存在しない。全フィールド optional で、
-// 省略は「未宣言(unknown)」であって「非対応」ではない。
+// Discovery only: the protocol has no negotiation step, and no transport in this package
+// fetches or sends these types — a caller obtains them out of band. Every field is
+// optional, and an omitted one means undeclared, not unsupported.
 
-/// 親エージェントが呼び出せるサブエージェントの情報。
+/// A sub-agent the parent says it can delegate to, advertised for display and routing —
+/// there is no way to address one over the wire from here.
 public struct SubAgentInfo: Codable, Sendable, Equatable {
     public var name: String
     public var description: String?
@@ -17,10 +18,11 @@ public struct SubAgentInfo: Codable, Sendable, Equatable {
     }
 }
 
-/// エージェントの識別情報。
+/// Who the agent is and what it runs on — descriptive only, and every field may be absent.
 public struct IdentityCapabilities: Codable, Sendable, Equatable {
     public var name: String?
-    /// 基盤フレームワーク(例: "langgraph", "mastra")。
+    /// The underlying framework, such as `"langgraph"` or `"mastra"`, not a MIME or
+    /// discriminator type.
     public var type: String?
     public var description: String?
     public var version: String?
@@ -47,7 +49,8 @@ public struct IdentityCapabilities: Codable, Sendable, Equatable {
     }
 }
 
-/// 対応トランスポート。
+/// Which ways of connecting the agent claims to accept. `AGUIHTTPAgent` speaks only
+/// HTTP + SSE, so the other flags matter to a different client, not to it.
 public struct TransportCapabilities: Codable, Sendable, Equatable {
     public var streaming: Bool?
     public var websocket: Bool?
@@ -70,8 +73,10 @@ public struct TransportCapabilities: Codable, Sendable, Equatable {
     }
 }
 
-/// ツール呼び出し能力。`items` はエージェント自身が持つツール
-/// (クライアント提供の `RunAgentInput.tools` とは別物)。
+/// What the agent can do with tools.
+///
+/// `items` lists the tools the agent already owns; do not confuse it with the
+/// client-provided `RunAgentInput.tools`, which the app has to execute itself.
 public struct ToolsCapabilities: Codable, Sendable, Equatable {
     public var supported: Bool?
     public var items: [AGUITool]?
@@ -91,7 +96,8 @@ public struct ToolsCapabilities: Codable, Sendable, Equatable {
     }
 }
 
-/// 出力形式の対応。
+/// What the agent can produce beyond plain text, such as schema-constrained output and
+/// specific MIME types.
 public struct OutputCapabilities: Codable, Sendable, Equatable {
     public var structuredOutput: Bool?
     public var supportedMimeTypes: [String]?
@@ -102,7 +108,8 @@ public struct OutputCapabilities: Codable, Sendable, Equatable {
     }
 }
 
-/// state・メモリ管理の対応。
+/// How the agent handles shared state: whether it emits snapshots, deltas, or both, and
+/// whether anything survives the thread.
 public struct StateCapabilities: Codable, Sendable, Equatable {
     public var snapshots: Bool?
     public var deltas: Bool?
@@ -122,7 +129,7 @@ public struct StateCapabilities: Codable, Sendable, Equatable {
     }
 }
 
-/// マルチエージェント連携の対応。
+/// Whether the agent works with other agents, and which ones it names as reachable.
 public struct MultiAgentCapabilities: Codable, Sendable, Equatable {
     public var supported: Bool?
     public var delegation: Bool?
@@ -142,7 +149,8 @@ public struct MultiAgentCapabilities: Codable, Sendable, Equatable {
     }
 }
 
-/// 推論(reasoning)の可視化対応。
+/// Whether reasoning is exposed at all, whether it streams, and whether it comes
+/// encrypted for zero-data-retention mode.
 public struct ReasoningCapabilities: Codable, Sendable, Equatable {
     public var supported: Bool?
     public var streaming: Bool?
@@ -155,7 +163,8 @@ public struct ReasoningCapabilities: Codable, Sendable, Equatable {
     }
 }
 
-/// 入力モダリティの対応。
+/// Which attachment kinds the agent accepts. `pdf` and `file` both map to the
+/// `document` input part; the split exists here only.
 public struct MultimodalInputCapabilities: Codable, Sendable, Equatable {
     public var image: Bool?
     public var audio: Bool?
@@ -178,7 +187,8 @@ public struct MultimodalInputCapabilities: Codable, Sendable, Equatable {
     }
 }
 
-/// 出力モダリティの対応。
+/// Which non-text media the agent can generate. There are no video or document
+/// counterparts to declare.
 public struct MultimodalOutputCapabilities: Codable, Sendable, Equatable {
     public var image: Bool?
     public var audio: Bool?
@@ -189,7 +199,8 @@ public struct MultimodalOutputCapabilities: Codable, Sendable, Equatable {
     }
 }
 
-/// マルチモーダル入出力の対応。
+/// The two directions of media support, kept apart because an agent that reads images
+/// usually cannot produce them.
 public struct MultimodalCapabilities: Codable, Sendable, Equatable {
     public var input: MultimodalInputCapabilities?
     public var output: MultimodalOutputCapabilities?
@@ -203,12 +214,12 @@ public struct MultimodalCapabilities: Codable, Sendable, Equatable {
     }
 }
 
-/// 実行制御と上限。
+/// What the agent may run and the ceilings it stops at.
 public struct ExecutionCapabilities: Codable, Sendable, Equatable {
     public var codeExecution: Bool?
     public var sandboxed: Bool?
     public var maxIterations: Int?
-    /// ミリ秒。
+    /// Milliseconds, not seconds.
     public var maxExecutionTime: Int?
 
     public init(
@@ -224,15 +235,18 @@ public struct ExecutionCapabilities: Codable, Sendable, Equatable {
     }
 }
 
-/// 人間介在(human-in-the-loop)の対応。
+/// How the agent involves a person mid-run.
 public struct HumanInTheLoopCapabilities: Codable, Sendable, Equatable {
     public var supported: Bool?
     public var approvals: Bool?
     public var interventions: Bool?
     public var feedback: Bool?
-    /// AG-UI interrupt プロトコル(RUN_FINISHED outcome=interrupt + resume)への参加。
+    /// Whether the agent takes part in the interrupt protocol at all — that is,
+    /// `RUN_FINISHED` with `outcome: interrupt`, answered by a later resume.
     public var interrupts: Bool?
-    /// tool-call interrupt の resume payload で editedArgs を受けるか。
+    /// Whether a tool-call interrupt accepts `editedArgs` in its resume payload.
+    /// That is what lets a person approve a call with changed arguments, rather than
+    /// only yes or no.
     public var approveWithEdits: Bool?
 
     public init(
@@ -252,8 +266,11 @@ public struct HumanInTheLoopCapabilities: Codable, Sendable, Equatable {
     }
 }
 
-/// エージェント能力の型付きスナップショット。
-/// `custom` は標準カテゴリに収まらない実装固有能力の口。
+/// Everything an agent declares about itself, grouped by concern.
+///
+/// A category left out encodes as an absent key, which reads as undeclared rather than
+/// unsupported, so do not treat `nil` as a no. `custom` is where implementation-specific
+/// capabilities go when no standard category fits.
 public struct AgentCapabilities: Codable, Sendable, Equatable {
     public var identity: IdentityCapabilities?
     public var transport: TransportCapabilities?

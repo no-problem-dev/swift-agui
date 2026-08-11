@@ -1,6 +1,9 @@
 import StructuredDataCore
 
-/// `RAW`。外部システムのイベントを原形のまま包む通過用コンテナ。
+/// `RAW` — carries an event from a foreign system verbatim, for pass-through and diagnostics.
+///
+/// Nothing in this package interprets `event`; the chunk expansion layer forwards it
+/// without closing an open text message or tool call.
 public struct RawEvent: Codable, Sendable, Equatable {
     public var event: StructuredValue
     public var source: String?
@@ -20,7 +23,8 @@ public struct RawEvent: Codable, Sendable, Equatable {
     }
 }
 
-/// `CUSTOM`。プロトコル拡張の正式な口。`name` で識別し `value` に任意値を載せる。
+/// `CUSTOM` — the sanctioned extension point: `name` identifies the extension and
+/// `value` carries arbitrary JSON that stays untyped end to end.
 public struct CustomEvent: Codable, Sendable, Equatable {
     public var name: String
     public var value: StructuredValue?

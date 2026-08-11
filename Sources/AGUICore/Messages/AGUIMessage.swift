@@ -1,6 +1,9 @@
 import StructuredDataCore
 
-/// メッセージの role。wire 上のディスクリミネータ。
+/// The `role` field that tells the message variants apart on the wire.
+///
+/// Unlike event types, there is no fallback case: a role this enum does not list fails to
+/// decode and takes the whole message with it.
 public enum AGUIRole: String, Codable, Sendable, CaseIterable {
     case developer
     case system
@@ -11,7 +14,8 @@ public enum AGUIRole: String, Codable, Sendable, CaseIterable {
     case reasoning
 }
 
-/// developer メッセージ。
+/// Instructions the application itself supplies. `content` is a required plain string —
+/// the multimodal part array exists only on a user message.
 public struct DeveloperMessage: Codable, Sendable, Equatable {
     public var id: String
     public var content: String
@@ -26,7 +30,8 @@ public struct DeveloperMessage: Codable, Sendable, Equatable {
     }
 }
 
-/// system メッセージ。
+/// The classic system prompt, identical in shape to a developer message. The protocol
+/// defines no precedence between the two, so which one wins is the agent's choice.
 public struct SystemMessage: Codable, Sendable, Equatable {
     public var id: String
     public var content: String
@@ -41,7 +46,10 @@ public struct SystemMessage: Codable, Sendable, Equatable {
     }
 }
 
-/// assistant メッセージ。テキストとツールコールの少なくとも一方を持つ。
+/// What the agent said, requested, or both.
+///
+/// A meaningful message carries text or tool calls, but both fields are optional on the
+/// wire and nothing here rejects one that has neither.
 public struct AssistantMessage: Codable, Sendable, Equatable {
     public var id: String
     public var content: String?
@@ -64,13 +72,14 @@ public struct AssistantMessage: Codable, Sendable, Equatable {
     }
 }
 
-/// user メッセージのコンテンツ。プレーン文字列またはマルチモーダルパート配列。
+/// The two shapes the wire allows for what a user sent: a bare string, or an array of
+/// typed parts. Which one comes in is preserved, and encoding writes the same shape back.
 public enum UserMessageContent: Sendable, Equatable {
     case text(String)
     case parts([InputContent])
 }
 
-/// user メッセージ。
+/// What the person typed or attached; the only message whose content can be multimodal.
 public struct UserMessage: Sendable, Equatable {
     public var id: String
     public var content: UserMessageContent
@@ -124,7 +133,10 @@ extension UserMessage: Codable {
     }
 }
 
-/// tool メッセージ(ツール実行結果)。
+/// The outcome of one tool call, tied back to it by `toolCallId`.
+///
+/// A failure is reported by filling `error`; `content` is required either way, so a failed
+/// call still has to say something in it.
 public struct ToolMessage: Codable, Sendable, Equatable {
     public var id: String
     public var content: String
@@ -147,8 +159,11 @@ public struct ToolMessage: Codable, Sendable, Equatable {
     }
 }
 
-/// activity メッセージ(構造化アクティビティ。A2UI サーフェス等)。
-/// クライアント側専用 — `RunAgentInput.messages` には載せない(送信時に除去される)。
+/// A structured activity such as an A2UI surface, built up locally from
+/// `ACTIVITY_SNAPSHOT` and `ACTIVITY_DELTA`.
+///
+/// - Important: This role is client-side only. Nothing strips it for you, so exclude it
+///   yourself when assembling `RunAgentInput.messages`.
 public struct ActivityMessage: Codable, Sendable, Equatable {
     public var id: String
     public var activityType: String
@@ -161,7 +176,8 @@ public struct ActivityMessage: Codable, Sendable, Equatable {
     }
 }
 
-/// reasoning メッセージ(可視の推論テキスト)。
+/// Reasoning text meant to be shown, accumulated from `REASONING_MESSAGE_CONTENT` deltas.
+/// `encryptedValue` holds the opaque form used in zero-data-retention mode.
 public struct ReasoningMessage: Codable, Sendable, Equatable {
     public var id: String
     public var content: String
@@ -174,9 +190,11 @@ public struct ReasoningMessage: Codable, Sendable, Equatable {
     }
 }
 
-/// 会話メッセージ。wire 上は `role` で判別する discriminated union。
+/// One conversation message, carried on the wire as an object discriminated by `role`.
 ///
-/// ミラー元: `@ag-ui/core` `types.ts` の `MessageSchema`。
+/// Mirrors `MessageSchema` in `@ag-ui/core` `types.ts`. There is no tolerant fallback
+/// here: a role this version does not know throws, so an unrecognised message is loud
+/// rather than lost.
 public enum AGUIMessage: Sendable, Equatable {
     case developer(DeveloperMessage)
     case system(SystemMessage)

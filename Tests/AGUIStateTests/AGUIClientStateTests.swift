@@ -32,7 +32,7 @@ struct AGUIClientStateTests {
         }
     }
 
-    // MARK: - 特殊規則 1: 親メッセージ解決
+    // MARK: - Special rule 1: parent message resolution
 
     @Test func toolCallJoinsExistingAssistantParent() throws {
         var state = AGUIClientState()
@@ -71,17 +71,17 @@ struct AGUIClientStateTests {
         #expect(assistant.toolCalls?.first?.function.arguments == #"{"q":1}"#)
     }
 
-    // MARK: - 特殊規則 2: TOOL_CALL_RESULT の挿入位置
+    // MARK: - Special rule 2: where TOOL_CALL_RESULT is inserted
 
     @Test func toolResultInsertsAfterOwnerNotAtEnd() throws {
         var state = AGUIClientState()
         try state.apply(.toolCallStart(ToolCallStartEvent(toolCallId: "c1", toolCallName: "f", parentMessageId: "a1")))
         try state.apply(.toolCallEnd(ToolCallEndEvent(toolCallId: "c1")))
-        // ツール結果が届く前に後続テキストがストリームされるケース
+        // The case where later text streams in before the tool result arrives
         try state.apply(.textMessageStart(TextMessageStartEvent(messageId: "a2")))
         try state.apply(.textMessageContent(TextMessageContentEvent(messageId: "a2", delta: "結果を見てみますね")))
         try state.apply(.toolCallResult(ToolCallResultEvent(messageId: "t1", toolCallId: "c1", content: "[]")))
-        // assistant(tool_call) → tool → text の順になること(provider 400 回避の正当性要件)
+        // Order must be assistant(tool_call) -> tool -> text, which is what avoids a provider 400
         #expect(state.messages.map(\.id) == ["a1", "t1", "a2"])
         #expect(state.messages[1].role == .tool)
     }
@@ -119,7 +119,7 @@ struct AGUIClientStateTests {
         #expect(String(describing: state.state["count"].numberValue!) == "2")
     }
 
-    /// パッチ失敗は警告してスキップ(ストリームを落とさない)。
+    /// A failed patch warns and is skipped, without bringing the stream down.
     @Test func failedStateDeltaWarnsAndKeepsState() throws {
         var state = AGUIClientState(state: .object(["count": .number(StructuredNumber(unchecked: "1"))]))
         let warnings = try state.apply(.stateDelta(StateDeltaEvent(delta: [
@@ -139,7 +139,7 @@ struct AGUIClientStateTests {
             content: .object(["status": .string("building")])
         )
         try state.apply(.activitySnapshot(first))
-        // replace: true(既定)→ ペイントがスケルトンを置換
+        // replace: true (the default): the paint replaces the skeleton
         let paint = ActivitySnapshotEvent(
             messageId: "a2ui-surface-c1",
             activityType: "a2ui-surface",
@@ -152,7 +152,7 @@ struct AGUIClientStateTests {
             return
         }
         #expect(activity.content.objectValue?["a2ui_operations"] != nil)
-        // replace: false → 既存があれば無視
+        // replace: false: ignored when one is already there
         var noReplace = ActivitySnapshotEvent(
             messageId: "a2ui-surface-c1",
             activityType: "a2ui-surface",
@@ -174,14 +174,14 @@ struct AGUIClientStateTests {
         #expect(state.messages.isEmpty)
     }
 
-    // MARK: - 特殊規則 3: MESSAGES_SNAPSHOT マージ
+    // MARK: - Special rule 3: MESSAGES_SNAPSHOT merge
 
     @Test func messagesSnapshotPreservesClientOnlyActivity() throws {
         var state = AGUIClientState(messages: [
             .user(UserMessage(id: "u1", content: .text("q"))),
             .activity(ActivityMessage(id: "act1", activityType: "a2ui-surface", content: .object([:]))),
         ])
-        // activity を含まない snapshot → ローカル activity は温存、u1 は置換、新規 a1 追加
+        // Snapshot with no activity: the local activity survives, u1 is replaced, a1 is added
         try state.apply(.messagesSnapshot(MessagesSnapshotEvent(messages: [
             .user(UserMessage(id: "u1", content: .text("q"))),
             .assistant(AssistantMessage(id: "a1", content: "answer")),
@@ -193,7 +193,7 @@ struct AGUIClientStateTests {
         var state = AGUIClientState(messages: [
             .activity(ActivityMessage(id: "act-old", activityType: "a2ui-surface", content: .object([:]))),
         ])
-        // activity を 1 つでも含む snapshot はそのロールの完全集合 → act-old は削除
+        // A snapshot holding any activity is the complete set for that role, so act-old goes
         try state.apply(.messagesSnapshot(MessagesSnapshotEvent(messages: [
             .activity(ActivityMessage(id: "act-new", activityType: "a2ui-surface", content: .object([:]))),
         ])))

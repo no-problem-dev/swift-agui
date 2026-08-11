@@ -1,18 +1,20 @@
 import AGUICore
 
-/// AG-UI エージェントへの接続。1 run の入力を渡すとイベントストリームが返る。
+/// Starts one run and streams back the events it produces.
 ///
-/// ミラー元: `@ag-ui/client` の `AbstractAgent.run`。API は
-/// `AsyncThrowingStream` 1 本に絞る(状態保持・購読者管理は利用側の責務)。
+/// Mirrors `AbstractAgent.run` in `@ag-ui/client`, narrowed to a single
+/// `AsyncThrowingStream`: holding state and managing subscribers is the caller's job.
 public protocol AGUIAgent: Sendable {
     func run(_ input: RunAgentInput) -> AsyncThrowingStream<AGUIEvent, Error>
 }
 
 extension AGUIAgent {
-    /// chunk 展開 → プロトコル順序検証を通した正規化ストリームを返す。
+    /// Runs the stream through chunk expansion and then through protocol ordering checks.
     ///
-    /// パイプライン順序は上流に忠実: chunk を先に三つ組へ展開するため、
-    /// 検証層は `*_CHUNK` を見ない。
+    /// The pipeline order is faithful to upstream: chunks are expanded into their
+    /// START / CONTENT / END triples first, so the verifier never sees a `*_CHUNK` event.
+    /// A producer that breaks the ordering rules ends the stream by throwing `AGUIError`;
+    /// events already yielded stay delivered.
     public func runVerified(_ input: RunAgentInput) -> AsyncThrowingStream<AGUIEvent, Error> {
         let upstream = run(input)
         return AsyncThrowingStream { continuation in

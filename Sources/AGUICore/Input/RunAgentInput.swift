@@ -1,13 +1,16 @@
 import StructuredDataCore
 
-/// クライアント提供ツールの宣言。サーバーは `TOOL_CALL_*` を emit するだけで、
-/// 実行はクライアント(アプリ)の責務。
+/// A tool the client declares it can run.
+///
+/// The agent only emits `TOOL_CALL_*` events for it; running the tool and sending back a
+/// tool message is the app's job, and nothing happens if the app ignores the call.
 public struct AGUITool: Codable, Sendable, Equatable {
     public var name: String
     public var description: String
-    /// 引数の JSON Schema。
+    /// JSON Schema for the arguments. It is passed through verbatim and never validated
+    /// here, so a malformed schema surfaces only at the agent.
     public var parameters: StructuredValue
-    /// 任意メタデータ(A2UI スキーマ等の拡張の口)。
+    /// Free-form extension slot, used for things like an A2UI component schema.
     public var metadata: StructuredValue?
 
     public init(
@@ -23,7 +26,8 @@ public struct AGUITool: Codable, Sendable, Equatable {
     }
 }
 
-/// クライアントがエージェントに渡す文脈情報。
+/// A labelled piece of ambient context for the agent. Both fields are strings, so
+/// structured context has to be serialised into `value` by the caller.
 public struct AGUIContext: Codable, Sendable, Equatable {
     public var description: String
     public var value: String
@@ -34,27 +38,32 @@ public struct AGUIContext: Codable, Sendable, Equatable {
     }
 }
 
-/// 1 run の実行入力。エンドポイントへ `POST` する JSON ボディ。
+/// Everything one run needs, and the JSON body `POST`ed to the agent endpoint.
 ///
-/// ミラー元: `@ag-ui/core` `types.ts` の `RunAgentInputSchema`。
-/// `messages` / `tools` / `context` は省略不可 — 空でも `[]` を送る。
-/// `resume` は明示指定時のみ載せる(`[]` を既定にしない)。
+/// Mirrors `RunAgentInputSchema` in `@ag-ui/core` `types.ts`. `messages`, `tools`,
+/// `context`, `state`, and `forwardedProps` are not omittable and always encode, empty or
+/// not; `resume` is written only when it was set, so it never goes out as `[]`.
 public struct RunAgentInput: Codable, Sendable, Equatable {
-    /// 会話スレッド識別子。クライアントが所有する。
+    /// Identifies the conversation across runs. The client owns it and the agent
+    /// correlates history by it.
     public var threadId: String
-    /// run ごとにクライアントが発行する識別子。
+    /// Identifies this run. The client mints a new one per run — reusing one makes two
+    /// runs indistinguishable in the agent's logs.
     public var runId: String
     public var parentRunId: String?
-    /// 共有 state。
+    /// State shared with the agent, which `STATE_SNAPSHOT` and `STATE_DELTA` then update.
     public var state: StructuredValue
-    /// 会話履歴。activity ロールは載せない(クライアント側専用)。
+    /// Conversation history. Leave out `activity` messages: that role is client-side only.
     public var messages: [AGUIMessage]
-    /// クライアント提供(フロントエンド)ツール。バックエンドツールは含めない。
+    /// Tools the frontend can execute. Tools the agent runs on its own side do not belong
+    /// here — the agent already knows about those.
     public var tools: [AGUITool]
     public var context: [AGUIContext]
-    /// クライアント → エージェントの追加プロパティ(認証情報・A2UI アクション等)。
+    /// Anything else to hand the agent, such as auth tokens or A2UI actions. It stays
+    /// untyped end to end.
     public var forwardedProps: StructuredValue
-    /// 開いている interrupt への応答。全 interrupt を網羅すること。
+    /// Answers to the interrupts that ended the previous run. Cover every one of them —
+    /// a partial set is not a valid resume.
     public var resume: [ResumeEntry]?
 
     public init(

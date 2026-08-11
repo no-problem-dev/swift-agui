@@ -2,15 +2,18 @@ import AGUICore
 import Foundation
 import StructuredDataCore
 
-/// interrupt / resume の契約バリデーション。
+/// Contract checks for the interrupt / resume handshake, run before the next run is sent.
 ///
-/// ミラー元: `@ag-ui/client` `interrupts/index.ts` と `AbstractAgent.onInitialize`。
-/// 契約(仕様の MUST):
-/// - 部分 resume は不可 — 1 つの resume 配列が開いている全 interrupt を網羅する
-/// - 未知の interrupt id への応答は不正
-/// - 期限切れ(`expiresAt` 超過)の interrupt へ resume を送ってはならない
+/// Mirrors `interrupts/index.ts` and `AbstractAgent.onInitialize` in `@ag-ui/client`.
+/// The contract, all MUSTs in the spec:
+/// - No partial resume — one resume array covers every open interrupt
+/// - Answering an interrupt id that is not open is invalid
+/// - No resume may be sent for an interrupt whose `expiresAt` has passed
 public enum InterruptResume {
-    /// 次の run を送る前の事前検証。
+    /// Throws unless the resume array answers exactly the open interrupts, none expired.
+    ///
+    /// - Note: An `expiresAt` that does not parse as ISO-8601 counts as no expiry at all,
+    ///   so a malformed timestamp lets the resume through.
     public static func validate(
         pending: [Interrupt],
         resume: [ResumeEntry],
@@ -40,10 +43,16 @@ public enum InterruptResume {
         }
     }
 
-    /// interrupt id → 応答 payload の対応から resume 配列を構築する
-    /// (全網羅・未知 id 拒否を検証済みの状態で返す)。
+    /// Builds the resume array that answers every open interrupt, resolved or cancelled.
     ///
-    /// - Parameter responses: 応答。値が nil のエントリは `.cancelled` になる。
+    /// The result comes back already validated: it covers all of them and names no
+    /// unknown id.
+    ///
+    /// - Parameters:
+    ///   - interrupts: The interrupts open on the thread; the result answers all of them.
+    ///   - responses: Payloads keyed by interrupt id. An id that is absent, or present
+    ///     with a nil value, becomes `.cancelled`.
+    ///   - now: Clock the expiry check reads, injectable for tests.
     public static func buildResumeArray(
         interrupts: [Interrupt],
         responses: [String: StructuredValue?],

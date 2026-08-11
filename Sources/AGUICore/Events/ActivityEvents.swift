@@ -1,9 +1,10 @@
 import StructuredDataCore
 
-/// `ACTIVITY_SNAPSHOT`。構造化アクティビティ(A2UI サーフェス等)のスナップショット。
+/// `ACTIVITY_SNAPSHOT` — the full content of a structured activity, such as an A2UI surface.
 ///
-/// `replace` は省略時 true(上流 zod の `.default(true)`)。false のとき、既存の
-/// 同一 messageId のアクティビティがあればスナップショットは無視される。
+/// An absent `replace` decodes as `true`, matching the upstream `.default(true)`.
+/// With `replace == false` the snapshot only creates: if an activity with the same
+/// `messageId` already exists, the whole snapshot is discarded and nothing changes.
 public struct ActivitySnapshotEvent: Codable, Sendable, Equatable {
     public var messageId: String
     public var activityType: String
@@ -48,7 +49,10 @@ public struct ActivitySnapshotEvent: Codable, Sendable, Equatable {
     }
 }
 
-/// `ACTIVITY_DELTA`。アクティビティ content への RFC 6902 JSON Patch。
+/// `ACTIVITY_DELTA` — an RFC 6902 JSON Patch applied to one activity's `content`.
+///
+/// A delta naming a `messageId` no activity has yet is a no-op, following upstream, so a
+/// patch that arrives before its snapshot is silently lost rather than reported.
 public struct ActivityDeltaEvent: Codable, Sendable, Equatable {
     public var messageId: String
     public var activityType: String

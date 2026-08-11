@@ -1,11 +1,14 @@
 import AGUICore
 import Foundation
 import Testing
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 @testable import AGUIClient
 
-/// URLProtocol スタブで SSE レスポンスを供給する結合テスト。
-/// スタブがプロセス共有のため直列実行にする。
+/// Integration tests that feed SSE responses in through a URLProtocol stub.
+/// Serialized because the stub is shared process-wide.
 @Suite(.serialized)
 struct AGUIHTTPAgentTests {
     private func makeAgent() -> AGUIHTTPAgent {
@@ -41,7 +44,7 @@ struct AGUIHTTPAgentTests {
         data: {"type":"RUN_FINISHED","threadId":"t1","runId":"r1","outcome":{"type":"success"}}
 
         """
-        // マルチバイト文字の途中で割ってチャンク供給する
+        // Deliver as two chunks, cut in the middle of a multi-byte character
         let bytes = Array(sse.utf8)
         let cut = bytes.count / 2
         StubURLProtocol.handler = { request in
@@ -83,7 +86,7 @@ struct AGUIHTTPAgentTests {
         _ = try await collect(makeAgent(), input: input)
     }
 
-    /// 既定では何も落とさない(仕様どおり全部送る)。
+    /// By default nothing is stripped: the body carries every key the spec defines.
     @Test func requestBodyKeepsEveryKeyByDefault() async throws {
         StubURLProtocol.handler = { request in
             let body = request.httpBodyData ?? Data()
@@ -97,15 +100,15 @@ struct AGUIHTTPAgentTests {
         _ = try await collect(makeAgent(), input: RunAgentInput(threadId: "t1", runId: "r1"))
     }
 
-    /// 繋ぎ先が読まない項目は落として送れる。型(`RunAgentInput`)は
-    /// 上流の写しのまま — 変えるのは送り方だけ。
+    /// Fields the server never reads can be kept off the wire. `RunAgentInput` stays a
+    /// copy of the upstream type; only what gets sent changes.
     @Test func omittedInputKeysAreStrippedFromTheBody() async throws {
         StubURLProtocol.handler = { request in
             let body = request.httpBodyData ?? Data()
             let object = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
             #expect(object?["state"] == nil)
             #expect(object?["tools"] == nil)
-            // 落としていないものは残る
+            // Everything not named is still there
             #expect(object?["threadId"] as? String == "t1")
             #expect(object?["messages"] != nil)
             return (200, ["Content-Type": "text/event-stream"], [])
@@ -144,7 +147,7 @@ struct AGUIHTTPAgentTests {
         }
     }
 
-    /// 不正な JSON ペイロードはストリームエラー(上流 zod と同じ意味論)。
+    /// A malformed JSON payload fails the stream, the same semantics as upstream's zod.
     @Test func malformedEventFailsStream() async {
         StubURLProtocol.handler = { _ in
             (200, ["Content-Type": "text/event-stream"], [Data("data: {\"type\":\"RUN_STARTED\"}\n\n".utf8)])
@@ -157,7 +160,7 @@ struct AGUIHTTPAgentTests {
     }
 }
 
-/// テスト用スタブ。ハンドラが (status, headers, body chunks) を返す。
+/// Test stub whose handler answers with (status, headers, body chunks).
 final class StubURLProtocol: URLProtocol, @unchecked Sendable {
     nonisolated(unsafe) static var handler: (@Sendable (URLRequest) -> (Int, [String: String], [Data]))?
 
@@ -187,7 +190,7 @@ final class StubURLProtocol: URLProtocol, @unchecked Sendable {
 }
 
 extension URLRequest {
-    /// URLProtocol 経由では httpBody が nil になり httpBodyStream に載るため、両対応で読む。
+    /// Through URLProtocol the body arrives on httpBodyStream with httpBody nil, so read both.
     var httpBodyData: Data? {
         if let body = httpBody {
             return body

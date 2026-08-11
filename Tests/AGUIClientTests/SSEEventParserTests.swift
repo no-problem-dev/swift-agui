@@ -23,31 +23,31 @@ struct SSEEventParserTests {
         #expect(payloads == ["1", "2", "3"])
     }
 
-    /// 複数の data: 行は \n で連結して 1 ペイロードにする。
+    /// Several data: lines join with \n into a single payload.
     @Test func multipleDataLinesAreJoined() throws {
         let payloads = try feedAll("data: line1\ndata: line2\n\n")
         #expect(payloads == ["line1\nline2"])
     }
 
-    /// コメント行(キープアライブ `: ping`)・event:・id:・retry: は無視する。
+    /// Comment lines (the `: ping` keep-alive), event:, id: and retry: are all ignored.
     @Test func nonDataLinesAreIgnored() throws {
         let payloads = try feedAll(": ping\n\nevent: message\nid: 42\nretry: 1000\ndata: x\n\n: another ping\n\n")
         #expect(payloads == ["x"])
     }
 
-    /// コロン直後のスペースは 1 個だけ除去する。
+    /// Exactly one space after the colon is stripped, never two.
     @Test func onlyOneLeadingSpaceIsStripped() throws {
         let payloads = try feedAll("data:  two spaces\n\ndata:none\n\n")
         #expect(payloads == [" two spaces", "none"])
     }
 
-    /// UTF-8 マルチバイト文字がチャンク境界で分断されても壊れない。
+    /// A UTF-8 multi-byte character split across chunk boundaries survives.
     @Test func multibyteCharacterSplitAcrossFeeds() throws {
         let text = "data: {\"delta\":\"こんにちは\"}\n\n"
         let bytes = Array(text.utf8)
         var parser = SSEEventParser()
         var payloads: [String] = []
-        // 1 バイトずつ供給(最悪ケース)
+        // One byte at a time, the worst case
         for byte in bytes {
             payloads.append(contentsOf: try parser.feed(CollectionOfOne(byte)))
         }
@@ -55,7 +55,7 @@ struct SSEEventParserTests {
         #expect(payloads == [#"{"delta":"こんにちは"}"#])
     }
 
-    /// EOF 時にバッファ残余(終端空行なし)を最後のイベントとして処理する。
+    /// At EOF the buffered remainder, never terminated by a blank line, becomes one event.
     @Test func finishFlushesTrailingEvent() throws {
         var parser = SSEEventParser()
         let mid = try parser.feed(Array("data: tail".utf8))
@@ -63,13 +63,13 @@ struct SSEEventParserTests {
         #expect(parser.finish() == ["tail"])
     }
 
-    /// CRLF 行末を許容する(行末の \r を除去)。
+    /// A CRLF line ending is tolerated: the trailing \r is stripped off the data line.
     @Test func crlfLineEndingsAreTolerated() throws {
         let payloads = try feedAll("data: x\r\n\ndata: y\n\n")
         #expect(payloads == ["x", "y"])
     }
 
-    /// バッファ上限(8 MiB)超過は AGUIError。
+    /// Growing one event past the 8 MiB buffer ceiling throws AGUIError.
     @Test func bufferOverflowThrows() {
         var parser = SSEEventParser()
         let chunk = [UInt8](repeating: UInt8(ascii: "a"), count: 1024 * 1024)
@@ -80,7 +80,7 @@ struct SSEEventParserTests {
         }
     }
 
-    /// エンコーダ(サーバー側)→ パーサ(クライアント側)の相互運用。
+    /// Interoperability from the server-side encoder to the client-side parser.
     @Test func encoderParserRoundTrip() throws {
         let encoder = EventEncoder()
         let events: [AGUIEvent] = [
