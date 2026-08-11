@@ -37,12 +37,12 @@ jobs:
             --target AGUICore --target AGUIEncoder --target AGUIClient --target AGUIJSONPatch --target AGUIState \
             --disable-indexing \
             --transform-for-static-hosting \
-            --hosting-base-path swift-a2ui \
+            --hosting-base-path swift-agui \
             --output-path ./docs
 
       - name: Inject package overview into combined root
         run: |
-          python3 - ./docs a2uicore <<'PY'
+          python3 - ./docs aguicore <<'PY'
           import json, os, sys
           docs, core = sys.argv[1], sys.argv[2].lower()
           root_p = os.path.join(docs, "data", "documentation.json")
