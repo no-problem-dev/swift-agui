@@ -5,7 +5,8 @@ import Foundation
 /// payload (a JSON string) of every completed event.
 ///
 /// Accepting rules, mirroring `transform/sse.ts` in `@ag-ui/client`:
-/// - Events are separated by a blank line (`\n\n`); an incomplete fragment stays buffered
+/// - Events are separated by a blank line, in either framing (`\n\n` or `\r\n\r\n`); an
+///   incomplete fragment stays buffered
 /// - Only `data:` lines are read, and exactly one space after the colon is stripped
 /// - Several `data:` lines in one event join with `\n` into a single payload
 /// - `event:` / `id:` / `retry:` and comment lines (leading `:`, which covers the
@@ -39,18 +40,35 @@ public struct SSEEventParser: Sendable {
     ///
     /// - Throws: `AGUIError` once a single event exceeds `maxBufferSize`.
     public mutating func feed(_ byte: UInt8) throws {
-        if byte == UInt8(ascii: "\n"), buffer.last == UInt8(ascii: "\n") {
-            let block = buffer
-            buffer.removeAll(keepingCapacity: true)
-            if let payload = Self.parseBlock(block) {
-                payloads.append(payload)
-            }
-            return
-        }
         buffer.append(byte)
         guard buffer.count <= Self.maxBufferSize else {
             throw AGUIError("SSE event exceeds maximum buffer size (\(Self.maxBufferSize) bytes)")
         }
+        guard let blockEnd = Self.blankLineStart(endingAt: buffer) else { return }
+        let block = Array(buffer[..<blockEnd])
+        buffer.removeAll(keepingCapacity: true)
+        if let payload = Self.parseBlock(block) {
+            payloads.append(payload)
+        }
+    }
+
+    /// Where the event ends, when the last byte just appended closed a blank line.
+    ///
+    /// The separator is a line ending followed by an empty line, and both endings can be `\n` or
+    /// `\r\n` independently — so `\n\n`, `\r\n\r\n`, `\r\n\n` and `\n\r\n` all terminate an event.
+    /// Testing only for two consecutive `\n` misses `\r\n\r\n`, the framing many SSE servers send,
+    /// and the stream then runs on until the buffer ceiling.
+    private static func blankLineStart(endingAt buffer: [UInt8]) -> Int? {
+        guard buffer.last == UInt8(ascii: "\n") else { return nil }
+        let separatorStart = buffer.count - 1
+        guard separatorStart > 0 else { return nil }
+        if buffer[separatorStart - 1] == UInt8(ascii: "\n") {
+            return separatorStart - 1
+        }
+        guard separatorStart > 1,
+              buffer[separatorStart - 1] == UInt8(ascii: "\r"),
+              buffer[separatorStart - 2] == UInt8(ascii: "\n") else { return nil }
+        return separatorStart - 2
     }
 
     /// Removes and returns the payloads accumulated since the last drain.

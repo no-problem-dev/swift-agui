@@ -63,10 +63,25 @@ struct SSEEventParserTests {
         #expect(parser.finish() == ["tail"])
     }
 
-    /// A CRLF line ending is tolerated: the trailing \r is stripped off the data line.
+    /// A stream framed entirely in CRLF parses: the blank line separating events is \r\n\r\n,
+    /// and the trailing \r is stripped off each data line.
     @Test func crlfLineEndingsAreTolerated() throws {
-        let payloads = try feedAll("data: x\r\n\ndata: y\n\n")
+        let payloads = try feedAll("data: x\r\n\r\ndata: y\r\n\r\n")
         #expect(payloads == ["x", "y"])
+    }
+
+    /// A server may mix the two framings within one stream; every event still comes out.
+    @Test func mixedLineEndingsAreTolerated() throws {
+        let payloads = try feedAll("data: a\r\n\ndata: b\n\r\ndata: c\n\n")
+        #expect(payloads == ["a", "b", "c"])
+    }
+
+    /// The event boundary is found across chunk edges, including when \r\n\r\n is split down
+    /// the middle — the case a real socket produces.
+    @Test func crlfBoundarySplitAcrossChunks() throws {
+        var parser = SSEEventParser()
+        #expect(try parser.feed(Array("data: x\r\n\r".utf8)).isEmpty)
+        #expect(try parser.feed(Array("\ndata: y\r\n\r\n".utf8)) == ["x", "y"])
     }
 
     /// Growing one event past the 8 MiB buffer ceiling throws AGUIError.
