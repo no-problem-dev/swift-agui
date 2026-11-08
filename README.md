@@ -53,7 +53,7 @@ than as a view that quietly renders the wrong thing.
 
 ## Documentation
 
-[API documentation](https://no-problem-dev.github.io/swift-agui/documentation/aguicore/)
+[API documentation](Sources/AGUICore/AGUICore.docc)
 
 ## Installation
 
